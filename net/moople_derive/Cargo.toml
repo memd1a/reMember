@@ -1,0 +1,27 @@
+[package]
+name = "moople_derive"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+proc-macro = true
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dev-dependencies]
+trybuild = { version = "1.0.49", features = ["diff"] }
+bytes  = "1.3"
+
+[[test]]
+name = "tests"
+path = "tests/progress.rs"
+
+
+[dependencies]
+syn = { version = "1.0", features=["extra-traits", "parsing"]}
+quote = "1.0"
+anyhow = "1.0.56"
+moople_packet = { version = "0.1.0", path = "../moople_packet" }
+darling = "0.14.2"
+proc-macro2 = "1.0.49"
+either = "1.8.1"

@@ -1,0 +1,12 @@
+/target
+/Cargo.lock
+**/target
+
+# Env files
+.env
+
+# PCap logs
+*.pcapng
+
+# Keys
+keys/**
