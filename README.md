@@ -6,10 +6,14 @@ Somewhat like an emulator project to preserve an old mushroom(v95) game
 
 1. Install the latest stable rust compiler(state 10.02.2023 1.67)
 2. Add the required keys the directory should look like this(ONLY net keys are required right now):
-```keys/
+```
+keys/
 ├── data
 │   ├── aes.bin
-│   └── iv.bin
+│   ├── default_iv.bin
+│   ├── gms_iv.bin
+│   ├── sea_iv.bin
+│   └── wz_magic.bin
 └── net
     ├── aes_key.bin
     ├── initial_round_key.bin
