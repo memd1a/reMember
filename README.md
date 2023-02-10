@@ -26,3 +26,4 @@ keys/
 
 * packets: `net/moople_derive`, `net/moople_packet`
 * net protocol: `net/moople_net`
+* wz files: `data/re-wz`
