@@ -51,7 +51,7 @@ fn check_name_even(name: &str) -> bool {
 #[derive(MaplePacket, Debug, PartialEq, Eq)]
 pub struct Packet4<'a, T> {
     name: &'a str,
-    #[maple_packet(skip_if(field = "name", cond = "check_name_even"))]
+    #[maple_packet(if(field = "name", cond = "check_name_even"))]
     bitmask: CondOption<u16>,
     val: T,
 }

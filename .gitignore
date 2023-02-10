@@ -10,3 +10,6 @@
 
 # Keys
 keys/**
+
+# test files
+data/test_files/**

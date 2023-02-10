@@ -1,6 +1,6 @@
 # reMember
 
-Somewhat like an emulator project to preserve an old game
+Somewhat like an emulator project to preserve an old mushroom(v95) game
 
 ## Setup
 

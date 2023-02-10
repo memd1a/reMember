@@ -32,13 +32,14 @@ impl Cond {
 struct MaplePacketField {
     ident: Option<Ident>,
     ty: Type,
-    skip_if: Option<Cond>,
+    #[darling(rename="if")]
+    _if: Option<Cond>,
     either: Option<Cond>,
 }
 
 impl MaplePacketField {
     pub fn get_cond(&self) -> Option<&Cond> {
-        self.skip_if.as_ref().or_else(|| self.either.as_ref())
+        self._if.as_ref().or(self.either.as_ref())
     }
 
     pub fn encode_expr(&self, field_name: &TokenStream) -> TokenStream {

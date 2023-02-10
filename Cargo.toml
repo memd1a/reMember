@@ -1,6 +1,10 @@
 [workspace]
 members = [
+    # net
     "net/moople_net",
     "net/moople_derive",
     "net/moople_packet",
+
+    # Data
+    "data/re-wz"
 ]

@@ -2,8 +2,7 @@
 
 ** Write maple packets as rust structures **
 
-TODO:
-rename skip_if to not_skip_if or sth not sure yet
+
 
 ## Examples
 
@@ -23,10 +22,10 @@ fn check_name_even(name: &str) -> bool {
 
 #[derive(MaplePacket)]
 pub struct PacketComplex<'a, T> {
-    // Lifetime supported to avoid allocations
+    // Take a reference to avoid allocations
     name: &'a str,
     // If the length of name is even decode `a`
-    #[maple_packet(skip_if(field = "name", cond = "check_name_even"))]
+    #[maple_packet(if(field = "name", cond = "check_name_even"))]
     a: CondOption<u16>,
     // If is even then go for String elsewise for a bool
     #[maple_packet(either(field = "name", cond = "check_name_even"))]
