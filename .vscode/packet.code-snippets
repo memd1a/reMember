@@ -1,0 +1,38 @@
+{
+	"MaplePacket": {
+		"scope": "rust",
+		"prefix": "packet",
+		"body":  [
+			"#[derive(MooplePacket, Debug)]",
+			"pub struct $1 {",
+			"\t$0",
+			"}"
+		],
+		"description": "Maple Packet"
+	},
+	"MaplePacketOpcode": {
+		"scope": "rust",
+		"prefix": "packet_with_opcode",
+		"body":  [
+			"#[derive(MooplePacket, Debug)]",
+			"pub struct $1 {",
+			"\t$0",
+			"}",
+			"packet_opcode!($1, $2);"
+		],
+		"description": "Maple Packet"
+	},
+	"MapleEnumCode": {
+		"scope": "rust",
+		"prefix": "maple_enum",
+		"body":  [
+			"#[derive(Debug, Clone, TryFromPrimitive, IntoPrimitive)]",
+			"#[repr(u8)]",
+			"pub enum $1 {",
+			"\t$0",
+			"}",
+			"mark_maple_enum!($1);"
+		],
+		"description": "Maple Packet"
+	}
+}
