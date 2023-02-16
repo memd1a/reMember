@@ -1,5 +1,6 @@
+pub mod ig_cipher;
 use cipher::{generic_array::GenericArray, typenum::U16};
-use rand::{CryptoRng, Rng, thread_rng};
+use rand::{thread_rng, CryptoRng, Rng};
 
 use crate::NetResult;
 
@@ -20,8 +21,6 @@ pub type PacketHeader = [u8; PACKET_HEADER_LEN];
 #[derive(Debug, Copy, Clone, PartialEq, PartialOrd, Eq)]
 pub struct RoundKey(pub [u8; ROUND_KEY_LEN]);
 
-
-
 impl Default for RoundKey {
     fn default() -> Self {
         key::INIT_ROUND_KEY
@@ -31,6 +30,18 @@ impl Default for RoundKey {
 impl From<[u8; ROUND_KEY_LEN]> for RoundKey {
     fn from(value: [u8; ROUND_KEY_LEN]) -> Self {
         Self(value)
+    }
+}
+
+impl From<RoundKey> for u32 {
+    fn from(value: RoundKey) -> Self {
+        u32::from_le_bytes(value.0)
+    }
+}
+
+impl From<u32> for RoundKey {
+    fn from(value: u32) -> Self {
+        Self(value.to_le_bytes())
     }
 }
 
@@ -47,38 +58,17 @@ impl RoundKey {
         RoundKey([0; ROUND_KEY_LEN])
     }
 
-
-    pub fn get_random<R>(mut rng: R) -> Self where R: CryptoRng + Rng {
+    pub fn get_random<R>(mut rng: R) -> Self
+    where
+        R: CryptoRng + Rng,
+    {
         let mut zero = Self::zero();
         rng.fill(&mut zero);
         zero
     }
 
-
     pub fn update(&self) -> RoundKey {
-        let mut current_shifting_byte: u8;
-        let key = self.0;
-        let mut new_key = key::INIT_ROUND_KEY.0;
-
-        for &current_byte in key.iter() {
-            current_shifting_byte = key::ROUND_SHIFTING_KEY[current_byte as usize];
-
-            new_key[0] = new_key[0].wrapping_add(
-                key::ROUND_SHIFTING_KEY[new_key[1] as usize].wrapping_sub(current_byte),
-            );
-            new_key[1] = new_key[1].wrapping_sub(new_key[2] ^ current_shifting_byte);
-            new_key[2] ^= key::ROUND_SHIFTING_KEY[new_key[3] as usize].wrapping_add(current_byte);
-            new_key[3] = new_key[3].wrapping_sub(new_key[0].wrapping_sub(current_shifting_byte));
-
-            let mut val = u32::from_le_bytes(new_key);
-            let mut val2 = val >> 0x1D;
-            val <<= 0x03;
-            val2 |= val;
-
-            new_key.copy_from_slice(&val2.to_le_bytes());
-        }
-
-        Self(new_key)
+        ig_cipher::inno_hash_n(&self.0, key::INIT_ROUND_KEY.into()).into()
     }
 
     pub fn expand(&self) -> GenericArray<u8, U16> {
@@ -86,11 +76,12 @@ impl RoundKey {
     }
 }
 
+
+
 pub struct MapleCrypto {
     maple_aes_cipher: MapleAESCipher,
     round_key: RoundKey,
 }
-
 
 impl Default for MapleCrypto {
     fn default() -> Self {
@@ -118,11 +109,7 @@ impl MapleCrypto {
         header::encode_header(self.round_key, length, version)
     }
 
-    pub fn decode_header(
-        &self,
-        hdr: PacketHeader,
-        version: u16,
-    ) -> NetResult<u16> {
+    pub fn decode_header(&self, hdr: PacketHeader, version: u16) -> NetResult<u16> {
         header::decode_header(hdr, self.round_key, version)
     }
 

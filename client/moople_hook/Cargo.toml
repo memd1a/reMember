@@ -1,0 +1,38 @@
+[package]
+name = "moople_hook"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+name = "dinput8"
+crate-type = ["cdylib"]
+
+
+[dependencies]
+anyhow = "1.0.68"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0.91"
+detour = { git = "https://github.com/veeenu/detour-rs" }
+region = "3.0.0"
+log = "0.4.17"
+env_logger = "0.10.0"
+pretty_env_logger = "0.4.0"
+naked-function = "0.1.1"
+
+
+[dependencies.windows]
+version = "0.44.0"
+features = [
+  "Win32_System_LibraryLoader",
+  "Win32_Foundation",
+  "Win32_Graphics_Direct3D",
+  "Win32_Graphics_Direct3D11",
+  "Win32_Graphics_Dxgi",
+  "Win32_Graphics_Dxgi_Common",
+  "Win32_Graphics_Gdi",
+  "Win32_System_Services",
+  "Win32_System_SystemServices",
+  "Win32_System_Console",
+  "Win32_UI_WindowsAndMessaging",
+]
+

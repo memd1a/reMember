@@ -112,3 +112,75 @@ impl MapleSession<TcpStream> {
         Self::initialize_client_session(socket).await
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use std::net::{IpAddr, Ipv4Addr};
+
+    use bytes::Bytes;
+    use moople_packet::MaplePacket;
+    use turmoil::net::{TcpListener, TcpStream};
+
+    use crate::{codec::handshake::Handshake, crypto::RoundKey, MapleSession};
+
+    const PORT: u16 = 1738;
+
+    async fn bind() -> std::result::Result<TcpListener, std::io::Error> {
+        TcpListener::bind((IpAddr::from(Ipv4Addr::UNSPECIFIED), PORT)).await
+    }
+
+    #[test]
+    fn echo() -> anyhow::Result<()> {
+        let mut sim = turmoil::Builder::new().build();
+        const ECHO_DATA: [&'static [u8]; 4] = [&[0xFF; 4096], &[1, 2], &[], &[0x0; 1024]];
+        const V: u16 = 83;
+
+        sim.host("server", || async move {
+            let handshake = Handshake {
+                version: V,
+                subversion: "1".to_string(),
+                iv_enc: RoundKey::zero(),
+                iv_dec: RoundKey::zero(),
+                locale: 1,
+            };
+
+            let listener = bind().await?;
+
+            loop {
+                let socket = listener.accept().await?.0;
+                let mut sess = MapleSession::initialize_server_session(socket, &handshake).await?;
+
+                // Echo
+                loop {
+                    match sess.read_packet().await {
+                        Ok(pkt) => {
+                            sess.send_packet(pkt).await?;
+                        }
+                        _ => {
+                            break;
+                        }
+                    }
+                }
+            }
+        });
+
+        sim.client("client", async move {
+            let socket = TcpStream::connect(("server", PORT)).await?;
+            let (mut sess, handshake) = MapleSession::initialize_client_session(socket).await?;
+            assert_eq!(handshake.version, V);
+
+            for data in ECHO_DATA.iter() {
+                sess.send_packet(MaplePacket::from_data(Bytes::from_static(data)))
+                    .await?;
+                let pkt = sess.read_packet().await?;
+                assert_eq!(pkt.data.as_ref(), *data);
+            }
+
+            Ok(())
+        });
+
+        sim.run().unwrap();
+
+        Ok(())
+    }
+}

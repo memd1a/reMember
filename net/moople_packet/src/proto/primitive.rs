@@ -77,47 +77,6 @@ where
         Ok(Self(T::decode_packet(&mut sub_reader).ok()))
     }
 }
-
-impl<T> EncodePacket for Option<T>
-where
-    T: EncodePacket,
-{
-    fn encode_packet<B: BufMut>(&self, pw: &mut MaplePacketWriter<B>) -> NetResult<()> {
-        if let Some(val) = self {
-            pw.write_u8(1);
-            val.encode_packet(pw)?;
-        } else {
-            pw.write_u8(0);
-        }
-        Ok(())
-    }
-}
-
-impl<'de, T> DecodePacket<'de> for Option<T>
-where
-    T: DecodePacket<'de>,
-{
-    fn decode_packet(pr: &mut MaplePacketReader<'de>) -> NetResult<Self> {
-        let has = pr.read_u8()?;
-        Ok(if has != 0 {
-            T::decode_packet(pr).ok()
-        } else {
-            None
-        })
-    }
-}
-
-impl<T> PacketLen for Option<T>
-where
-    T: PacketLen,
-{
-    const SIZE_HINT: Option<usize> = None;
-
-    fn packet_len(&self) -> usize {
-        self.as_ref().map(|v| v.packet_len()).unwrap_or(0)
-    }
-}
-
 impl EncodePacket for String {
     fn encode_packet<B: BufMut>(&self, pw: &mut MaplePacketWriter<B>) -> NetResult<()> {
         pw.write_str(self);
@@ -135,7 +94,7 @@ impl PacketLen for String {
     const SIZE_HINT: Option<usize> = None;
 
     fn packet_len(&self) -> usize {
-        2 + self.len()
+        self.as_str().packet_len()
     }
 }
 
@@ -278,7 +237,7 @@ impl<'a> PacketLen for &'a str {
     const SIZE_HINT: Option<usize> = None;
 
     fn packet_len(&self) -> usize {
-        2 + self.len()
+        MaplePacketReader::str_packet_len(self)
     }
 }
 

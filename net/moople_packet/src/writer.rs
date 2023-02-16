@@ -1,6 +1,6 @@
 use bytes::{BufMut, BytesMut};
 
-use crate::opcode::NetOpcode;
+use crate::{opcode::NetOpcode, MaplePacket};
 
 #[derive(Debug)]
 pub struct MaplePacketWriter<T = BytesMut> {
@@ -32,6 +32,10 @@ impl MaplePacketWriter<BytesMut> {
 
     pub fn is_empty(&self) -> bool {
         self.buf.is_empty()
+    }
+
+    pub fn into_packet(self) -> MaplePacket {
+        MaplePacket::from_writer(self)
     }
 }
 

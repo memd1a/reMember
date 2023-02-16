@@ -1,6 +1,6 @@
 use std::{
     io::{Read, Seek},
-    ops::Neg,
+    ops::Neg, num::Wrapping,
 };
 
 use binrw::{binrw, BinRead, BinWrite, VecArgs};
@@ -114,18 +114,18 @@ impl BinWrite for WzF32 {
 }
 
 fn xor_mask_ascii(data: &mut [u8]) {
-    let mut mask = 0xAAu8;
+    let mut mask = Wrapping(0xAAu8);
     for b in data.iter_mut() {
-        *b ^= mask;
-        mask = mask.wrapping_add(1);
+        *b ^= mask.0;
+        mask += 1;
     }
 }
 
 fn xor_mask_unicode(data: &mut [u16]) {
-    let mut mask = 0xAAAA;
+    let mut mask = Wrapping(0xAAAA);
     for b in data.iter_mut() {
-        *b ^= mask;
-        mask = mask.wrapping_add(1);
+        *b ^= mask.0;
+        mask += 1;
     }
 }
 

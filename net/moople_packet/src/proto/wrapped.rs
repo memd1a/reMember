@@ -52,9 +52,8 @@ impl<W: MapleWrapped> MapleTryWrapped for W {
     }
 }
 
-impl<W> PacketLen for W
+impl<W: MapleTryWrapped> PacketLen for W
 where
-    W: MapleTryWrapped,
     W::Inner: PacketLen,
 {
     const SIZE_HINT: Option<usize> = W::Inner::SIZE_HINT;

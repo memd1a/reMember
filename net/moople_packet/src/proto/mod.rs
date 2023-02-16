@@ -27,19 +27,18 @@ pub trait DecodePacket<'de>: Sized {
             .collect::<NetResult<_>>()
     }
 
-    fn try_decode(pr: &mut MaplePacketReader<'de>) -> NetResult<Option<Self>> {
+    /// Attempts to decode the packet
+    /// If EOF is reached None is returned elsewise the Error is returned
+    /// This is useful for reading an optional tail
+    fn try_decode_packet(pr: &mut MaplePacketReader<'de>) -> NetResult<Option<Self>> {
         let mut sub_reader = pr.sub_reader();
         Ok(match Self::decode_packet(&mut sub_reader) {
-            Ok(_item) => {
-                todo!()
-                //TODO ensure it's positive
-                /*let ptr_sub = sub_reader.data.as_ptr() as usize;
-                let ptr_r = pr.data.as_ptr() as usize;
-                assert!(ptr_sub >= ptr_r);
-                pr.advance(ptr_sub - ptr_r)?;
-                Some(item)*/
+            Ok(item) => {
+                pr.commit_sub_reader(sub_reader)?;
+                Some(item)
             }
-            Err(_) => None,
+            Err(crate::NetError::EOF { .. }) => None,
+            Err(err) => return Err(err),
         })
     }
 
@@ -65,7 +64,6 @@ pub trait EncodePacket: Sized {
         let mut pw = MaplePacketWriter::default();
         self.encode_packet(&mut pw)?;
         Ok(pw.into_inner().freeze())
-
     }
 }
 
@@ -86,6 +84,8 @@ impl SizeHint {
         Self(Some(0))
     }
 
+    /// Sum two Option<usize>
+    /// When const traits become stable Add can be implemented
     pub const fn add(self, rhs: Self) -> Self {
         Self(match (self.0, rhs.0) {
             (Some(a), Some(b)) => Some(a + b),

@@ -1,3 +1,5 @@
+use std::num::Wrapping;
+
 pub struct ShandaCipher;
 
 const SHANDA_ROUNDS: usize = 3;
@@ -70,14 +72,14 @@ impl ShandaCipher {
     {
         let n = data.len();
         let mut state = 0;
-        let mut ln = n as u8;
+        let mut ln = Wrapping(n as u8);
 
         // REV
         for d in data.iter_mut().rev()  {
-            let (b, next_state) = apply(*d, state, ln);
+            let (b, next_state) = apply(*d, state, ln.0);
             *d = b;
             state = next_state;
-            ln = ln.wrapping_sub(1);
+            ln -= 1;
         }
     }
 

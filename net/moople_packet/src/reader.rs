@@ -10,6 +10,12 @@ pub struct MaplePacketReader<'a> {
 }
 
 impl<'a> MaplePacketReader<'a> {
+    pub fn str_packet_len(s: &str) -> usize {
+        // Len + data
+        2 + s.len()
+    }
+
+
     pub fn new(inner: &'a [u8]) -> Self {
         Self {
             inner: Cursor::new(inner),
@@ -29,10 +35,18 @@ impl<'a> MaplePacketReader<'a> {
         self.check_size_typed::<()>(n)
     }
 
-    pub fn sub_reader(&self) -> MaplePacketReader<'a> {
-        // TODO evaluate if this is needed and implement a proper sub reader
-        // which can commit(advance cursor position incase read is succesful)
-        todo!("Sub reader not supported yet")
+    pub fn remaining_slice(&self) -> &'a [u8] {
+        let p = self.inner.position() as usize;
+        &self.inner.get_ref()[p..]
+    }
+
+
+    pub fn sub_reader(&self) -> Self {
+        Self::new(self.remaining_slice())
+    }
+
+    pub fn commit_sub_reader(&mut self, sub_reader: Self) -> NetResult<()> {
+        self.advance(sub_reader.inner.position() as usize)
     }
 
     pub fn advance(&mut self, n: usize) -> NetResult<()> {

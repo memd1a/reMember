@@ -10,6 +10,7 @@ pub use proto::{DecodePacket, DecodePacketOwned, EncodePacket, PacketLen};
 pub use proto::conditional::MapleConditional;
 pub use reader::MaplePacketReader;
 pub use writer::MaplePacketWriter;
+pub use opcode::HasOpcode;
 
 pub use error::NetError;
 pub type NetResult<T> = Result<T, error::NetError>;

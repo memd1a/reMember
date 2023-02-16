@@ -53,14 +53,18 @@ impl Handshake {
 
     pub fn write_handshake<W: Write>(&self, mut w: W) -> NetResult<()> {
         let (data, n) = self.encode_with_len();
-        w.write_all(&data[..n])?;
+        //TODO: turmoil needs this right now cause the buffer is not implemented properly
+        w.write_all(&data[0..2])?;
+        w.write_all(&data[2..n])?;
 
         Ok(())
     }
 
     pub async fn write_handshake_async<W: AsyncWrite + Unpin>(&self, mut w: W) -> NetResult<()> {
         let (data, n) = self.encode_with_len();
-        w.write_all(&data[..n]).await?;
+        //TODO: turmoil needs this right now cause the buffer is not implemented properly
+        w.write_all(&data[0..2]).await?;
+        w.write_all(&data[2..n]).await?;
 
         Ok(())
     }

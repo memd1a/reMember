@@ -28,7 +28,7 @@ impl Cond {
 }
 
 #[derive(Debug, FromField)]
-#[darling(attributes(maple_packet))]
+#[darling(attributes(pkt))]
 struct MaplePacketField {
     ident: Option<Ident>,
     ty: Type,
@@ -72,14 +72,14 @@ impl MaplePacketField {
 }
 
 #[derive(Debug, FromDeriveInput)]
-#[darling(attributes(maple_packet), supports(struct_any))]
+#[darling(attributes(pkt), supports(struct_any))]
 struct MaplePacket {
     ident: Ident,
     data: ast::Data<util::Ignored, MaplePacketField>,
     generics: syn::Generics,
 }
 
-#[proc_macro_derive(MaplePacket, attributes(maple_packet, opcode))]
+#[proc_macro_derive(MooplePacket, attributes(pkt))]
 pub fn maple_packet(item: proc_macro::TokenStream) -> proc_macro::TokenStream {
     let derive_input = syn::parse_macro_input!(item as syn::DeriveInput);
 

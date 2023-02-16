@@ -8,7 +8,7 @@
 
 ```rust
 
-#[derive(MaplePacket)]
+#[derive(MooplePacket)]
 pub struct Packet {
     test8: u8,
     test16: u16,
@@ -20,15 +20,15 @@ fn check_name_even(name: &str) -> bool {
     name.len() % 2 == 0
 }
 
-#[derive(MaplePacket)]
+#[derive(MooplePacket)]
 pub struct PacketComplex<'a, T> {
     // Take a reference to avoid allocations
     name: &'a str,
     // If the length of name is even decode `a`
-    #[maple_packet(if(field = "name", cond = "check_name_even"))]
+    #[pkt(if(field = "name", cond = "check_name_even"))]
     a: CondOption<u16>,
     // If is even then go for String elsewise for a bool
-    #[maple_packet(either(field = "name", cond = "check_name_even"))]
+    #[pkt(either(field = "name", cond = "check_name_even"))]
     b: CondEither<String, bool>,
 }
 ```
@@ -39,18 +39,7 @@ Supports:
 * Lifetimes
 * Generics
 * All types which implement the *EncodePacket* + *DecodePacket* trait
-* Conditional types `CondOption<T>` + `CondEither<L, R>`
-
+* Conditional types `CondOption<T>` + `CondEither<L, R>`, with pkt(if(..)), pkt(either(..)) attributes
 
 ## ToDo
-
-* Conditional fields, as in:
-```rust
-#[derive(MaplePacket)]
-pub struct ConditionalPacket {
-    test8: u8,
-    #[maple_packet(skip_if = "test8 > 10")]
-    test16: u16,
-}
-```
 * Split the derive into Encode and Decode

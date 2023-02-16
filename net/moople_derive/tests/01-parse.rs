@@ -1,16 +1,19 @@
 use bytes::BytesMut;
 use either::Either;
-use moople_derive::MaplePacket;
+use moople_derive::MooplePacket;
 
-use moople_packet::{proto::conditional::{CondOption, CondEither}, DecodePacket, EncodePacket, MaplePacketWriter, PacketLen};
+use moople_packet::{
+    proto::conditional::{CondEither, CondOption},
+    DecodePacket, EncodePacket, MaplePacketWriter, PacketLen,
+};
 
-#[derive(MaplePacket)]
+#[derive(MooplePacket)]
 pub struct Packet {
     name: u8,
     bitmask: u16,
 }
 
-#[derive(MaplePacket)]
+#[derive(MooplePacket)]
 pub struct Packet2(u8, u16);
 
 #[derive(Debug, Clone, Copy)]
@@ -38,7 +41,7 @@ impl TryFrom<u16> for TestOpcode {
 
 //impl NetOpcode for TestOpcode {}
 
-#[derive(MaplePacket, Debug, PartialEq, Eq)]
+#[derive(MooplePacket, Debug, PartialEq, Eq)]
 pub struct Packet3<'a> {
     name: &'a str,
     bitmask: u16,
@@ -48,22 +51,22 @@ fn check_name_even(name: &str) -> bool {
     name.len() % 2 == 0
 }
 
-#[derive(MaplePacket, Debug, PartialEq, Eq)]
+#[derive(MooplePacket, Debug, PartialEq, Eq)]
 pub struct Packet4<'a, T> {
     name: &'a str,
-    #[maple_packet(if(field = "name", cond = "check_name_even"))]
+    #[pkt(if(field = "name", cond = "check_name_even"))]
     bitmask: CondOption<u16>,
     val: T,
 }
 
 fn check_n_even(n: &u32) -> bool {
-    n%2 == 0
+    n % 2 == 0
 }
 
-#[derive(MaplePacket, Debug, PartialEq, Eq)]
+#[derive(MooplePacket, Debug, PartialEq, Eq)]
 pub struct Packet5 {
     n: u32,
-    #[maple_packet(either(field = "n", cond = "check_n_even"))]
+    #[pkt(either(field = "n", cond = "check_n_even"))]
     either: CondEither<String, bool>,
 }
 
@@ -73,7 +76,6 @@ where
 {
     let mut pw = MaplePacketWriter::new(buf);
     data.encode_packet(&mut pw).expect("must encode");
-
 
     let inner = pw.into_inner();
     let cmp = T::decode_from_data(inner).expect("must decode");
@@ -91,7 +93,6 @@ fn main() {
     assert_eq!(Packet::SIZE_HINT, Some(3));
     assert_eq!(Packet3::SIZE_HINT, None);
 
-
     test_encode_decode!(Packet3 {
         name: "aaa",
         bitmask: 1337,
@@ -107,7 +108,6 @@ fn main() {
         bitmask: CondOption(Some(1337)),
         val: 1337u16,
     });
-
 
     test_encode_decode!(Packet5 {
         n: 2,

@@ -37,9 +37,9 @@ pub enum WzRegion {
 impl WzRegion {
     pub fn key(&self) -> &'static WzKey {
         match self {
-            WzRegion::GMS => &keys::GMS_WZ_IV,
-            WzRegion::SEA => &keys::SEA_WZ_IV,
-            WzRegion::Other => &keys::DEFAULT_WZ_IV,
+            WzRegion::GMS => keys::GMS_WZ_IV,
+            WzRegion::SEA => keys::SEA_WZ_IV,
+            WzRegion::Other => keys::DEFAULT_WZ_IV,
         }
     }
 }

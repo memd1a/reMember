@@ -1,3 +1,5 @@
+use std::num::Wrapping;
+
 use aes::cipher::{
     inout::InOutBuf,
     typenum::{U16, U256},
@@ -113,12 +115,12 @@ impl WzCrypto {
     }
 
     fn offset_key_at(&self, pos: u32, data_offset: u32) -> u32 {
-        let mut off = !(pos - data_offset);
-        off = off.wrapping_mul(self.version_hash);
-        off = off.wrapping_sub(WZ_OFFSET_MAGIC);
-        off = off.rotate_left(off & 0x1F);
+        let mut off = Wrapping(!(pos - data_offset));
+        off *= self.version_hash;
+        off -= WZ_OFFSET_MAGIC;
 
-        off
+        let off = off.0;
+        off.rotate_left(off & 0x1F)
     }
 
     pub fn decrypt_offset(&self, encrypted_offset: u32, pos: u32) -> u32 {

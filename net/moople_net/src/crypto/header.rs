@@ -109,7 +109,7 @@ mod tests {
     fn client_hdr_test() {
         let ex_hdr = [0x29, 0xd2, 0x2b, 0xd2];
         let iv_enc = RoundKey([70, 114, 122, 210]);
-        let ln = decode_header(ex_hdr, iv_enc, 83).unwrap();
+        let ln = dec(iv_enc, ex_hdr, 83);
         assert_eq!(ln, 2);
     }
 }

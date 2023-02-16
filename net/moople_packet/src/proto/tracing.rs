@@ -154,12 +154,12 @@ mod tests {
     use super::{HasTraceInformation, TracingEncodePacket, TracingStruct};
 
     struct A {
-        one: u8,
-        two: u16,
-        three: u32,
-        four: u64,
-        five: bool,
-        six: String,
+        _one: u8,
+        _two: u16,
+        _three: u32,
+        _four: u64,
+        _five: bool,
+        _six: String,
     }
 
     impl TracingEncodePacket for A {
@@ -189,12 +189,12 @@ mod tests {
     impl<'de> DecodePacket<'de> for A {
         fn decode_packet(pr: &mut MaplePacketReader<'de>) -> NetResult<Self> {
             Ok(Self {
-                one: <u8>::decode_packet(pr)?,
-                two: <u16>::decode_packet(pr)?,
-                three: <u32>::decode_packet(pr)?,
-                four: <u64>::decode_packet(pr)?,
-                five: <bool>::decode_packet(pr)?,
-                six: <String>::decode_packet(pr)?,
+                _one: <u8>::decode_packet(pr)?,
+                _two: <u16>::decode_packet(pr)?,
+                _three: <u32>::decode_packet(pr)?,
+                _four: <u64>::decode_packet(pr)?,
+                _five: <bool>::decode_packet(pr)?,
+                _six: <String>::decode_packet(pr)?,
             })
         }
     }
