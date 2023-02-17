@@ -16,11 +16,11 @@ pub const STRING_DATA_FILE: &str = "data/strings.json";
 pub const PACKET_OUT_FILE: &str = "data/packet_out.json";
 pub const PACKET_IN_FILE: &str = "data/packet_in.json";
 
-pub mod wz_img;
 pub mod packet_struct;
 pub mod socket;
 pub mod strings;
 pub mod util;
+pub mod wz_img;
 pub mod ztl;
 
 use detour::static_detour;
@@ -28,14 +28,15 @@ use packet_struct::RECV_PACKET_CTX;
 use std::ffi::c_void;
 use std::sync::LazyLock;
 use std::time::Duration;
+use windows::Win32::Storage::FileSystem::{FindFileHandle, WIN32_FIND_DATAA};
 
 use strings::dump_string_pool;
-use windows::core::{GUID, HRESULT};
-use windows::s;
+use windows::core::{GUID, HRESULT, PCSTR};
 use windows::Win32::Foundation::{BOOL, HINSTANCE};
 use windows::Win32::System::Console::AllocConsole;
-use windows::Win32::System::LibraryLoader::{GetProcAddress, LoadLibraryA};
+use windows::Win32::System::LibraryLoader::{GetModuleHandleW, GetProcAddress, LoadLibraryA};
 use windows::Win32::System::SystemServices::{DLL_PROCESS_ATTACH, DLL_PROCESS_DETACH};
+use windows::{s, w};
 
 use crate::util::nop;
 
@@ -44,10 +45,8 @@ extern "C" {
     fn return_address(a: i32) -> *const u8;
 }
 
-fn_ref_hook!(
+fn_ref_hook2!(
     cxx_throw_exception,
-    CxxThrowException,
-    cxx_throw_exception_addr,
     0x00a307a1,
     CxxThrowExceptionHook,
     unsafe extern "cdecl" fn(*const c_void, *const c_void) -> u8
@@ -59,8 +58,19 @@ fn cxx_throw_exception_8_detour(ex_obj: *const c_void, throw_info: *const c_void
     log::info!("Exception @ {:X} - {:X}", ret, ret2);
     RECV_PACKET_CTX.finish_incomplete(0, ret);
 
-
     unsafe { CxxThrowExceptionHook.call(ex_obj, throw_info) }
+}
+
+static_detour! {
+    static FindFirstFileAHook: unsafe extern "system" fn(PCSTR, *mut WIN32_FIND_DATAA) -> FindFileHandle;
+}
+type FnFindFirstFileA = unsafe extern "system" fn(PCSTR, *mut WIN32_FIND_DATAA) -> FindFileHandle;
+fn find_first_file_detour(
+    file_name: PCSTR,
+    find_file_data: *mut WIN32_FIND_DATAA,
+) -> FindFileHandle {
+    log::info!("Find first file: {}", unsafe { file_name.display() });
+    unsafe { FindFirstFileAHook.call(file_name, find_file_data) }
 }
 
 type FDirectInput8Create = unsafe extern "stdcall" fn(
@@ -94,7 +104,7 @@ fn initialize() {
     unsafe { AllocConsole() };
 
     // Patches
-    
+
     // No logo
     unsafe { nop(0x60e2db as *mut u8, 16) };
 
@@ -102,7 +112,6 @@ fn initialize() {
     //pretty_env_logger::init_custom_env("RUST_LOG=DEBUG");
     pretty_env_logger::init();
 
-    println!("reMember - Moople Hook 1.1");
     log::info!("reMember - Moople Hook 1.1");
     LazyLock::force(&STATE);
 }
@@ -111,6 +120,14 @@ fn init_hooks() -> anyhow::Result<()> {
     log::info!("Hooking...");
 
     unsafe {
+        let handle = GetModuleHandleW(w!("kernel32.dll"))?;
+        let find_first_file_a: FnFindFirstFileA =
+            std::mem::transmute(GetProcAddress(handle, s!("FindFirstFileA")));
+
+        FindFirstFileAHook
+            .initialize(find_first_file_a, find_first_file_detour)?
+            .enable()?;
+
         socket::init_hooks()?;
 
         CxxThrowExceptionHook
@@ -122,7 +139,6 @@ fn init_hooks() -> anyhow::Result<()> {
 
     Ok(())
 }
-
 
 fn exec() {
     log::info!("Exec started");

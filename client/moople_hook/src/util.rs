@@ -18,11 +18,39 @@ macro_rules! fn_ref {
 }
 
 
+#[macro_export]
+macro_rules! fn_ref2 {
+    ($name:ident, $addr:tt, $($fn_ty:tt)*) => {
+        paste::paste! {
+            #[allow(non_upper_case_globals)]
+            pub const [<$name _addr>]: *const () = $addr as *const ();
+            pub type [<$name:camel>] = $($fn_ty)*;
+            #[allow(non_upper_case_globals)]
+            pub static $name: std::sync::LazyLock<[<$name:camel>]> = std::sync::LazyLock::new(|| unsafe {
+                std::mem::transmute([<$name _addr>])
+            });
+        }
+    };
+    /* 
+    ($name:ident,$fn_name:ident,$fn_ty:ty, $addr:tt) => {
+        fn_ref!($name, $fn_name, $fn_ty, concat_idents!($name, _addr), $addr);
+    }*/
+}
 
 #[macro_export]
 macro_rules! fn_ref_hook {
     ($name:ident,$fn_name:ident, $addr_name:ident, $addr:tt, $hook_name:ident, $($fn_ty:tt)*) => {
         fn_ref!($name, $fn_name, $addr_name, $addr, $($fn_ty)*);
+        detour::static_detour! {
+            static $hook_name: $($fn_ty)*;
+        }
+    };
+}
+
+#[macro_export]
+macro_rules! fn_ref_hook2 {
+    ($name:ident, $addr:tt, $hook_name:ident, $($fn_ty:tt)*) => {
+        fn_ref2!($name, $addr, $($fn_ty)*);
         detour::static_detour! {
             static $hook_name: $($fn_ty)*;
         }
