@@ -1,6 +1,6 @@
 use std::fmt::Debug;
 
-use chrono::{NaiveDateTime, Utc};
+use chrono::NaiveDateTime;
 
 use crate::{NetError, NetResult};
 
@@ -10,10 +10,6 @@ const FT_UT_OFFSET: i64 = 116444736010800000;
 const DEFAULT_TIME: i64 = 150842304000000000;
 const ZERO_TIME: i64 = 94354848000000000;
 const PERMANENT_TIME: i64 = 150841440000000000;
-
-fn date_time_from_secs(v: i64) -> NetResult<NaiveDateTime> {
-    NaiveDateTime::from_timestamp_millis(v * 1_000).ok_or_else(|| NetError::InvalidTimestamp(v))
-}
 
 #[derive(PartialEq, Eq, Copy, Clone)]
 pub struct MapleTime(pub i64);
@@ -42,8 +38,7 @@ impl TryFrom<[u8; 8]> for MapleTime {
     type Error = NetError;
 
     fn try_from(value: [u8; 8]) -> Result<Self, Self::Error> {
-        let v = i64::from_le_bytes(value);
-        v.try_into()
+        i64::from_le_bytes(value).try_into()
     }
 }
 
@@ -103,63 +98,6 @@ impl MapleTryWrapped for MapleTime {
 
     fn maple_try_from(v: Self::Inner) -> NetResult<Self> {
         Self::try_from(v)
-    }
-}
-
-#[derive(Debug, Clone)]
-pub struct Timestamp32(pub NaiveDateTime);
-
-impl Timestamp32 {
-    pub fn zero() -> Timestamp32 {
-        Self(NaiveDateTime::from_timestamp_millis(0).unwrap())
-    }
-
-    pub fn now() -> Timestamp32 {
-        Self(Utc::now().naive_utc())
-    }
-}
-
-impl MapleTryWrapped for Timestamp32 {
-    type Inner = i32;
-
-    fn maple_into_inner(&self) -> Self::Inner {
-        //TODO handle overflow
-        self.0.timestamp() as i32
-    }
-
-    fn maple_try_from(v: Self::Inner) -> NetResult<Self> {
-        let t = date_time_from_secs(v as i64)?;
-        Ok(Timestamp32(t))
-    }
-}
-
-#[derive(Debug, Clone)]
-pub struct Timestamp64(pub i64);
-
-impl Timestamp64 {
-    pub fn now() -> Self {
-        Self::from_date_time(Utc::now().naive_utc())
-    }
-
-    pub fn as_date_time(&self) -> NetResult<NaiveDateTime> {
-        date_time_from_secs(self.0)
-    }
-
-    pub fn from_date_time(dt: NaiveDateTime) -> Self {
-        Self(dt.timestamp())
-    }
-}
-
-impl MapleTryWrapped for Timestamp64 {
-    type Inner = i64;
-
-    fn maple_into_inner(&self) -> Self::Inner {
-        self.0
-    }
-
-    fn maple_try_from(v: Self::Inner) -> NetResult<Self> {
-        // ToDo Verifys
-        Ok(Self(v))
     }
 }
 

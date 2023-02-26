@@ -26,7 +26,8 @@ pub mod ztl;
 use detour::static_detour;
 use packet_struct::RECV_PACKET_CTX;
 use std::ffi::c_void;
-use std::sync::LazyLock;
+use std::sync::atomic::Ordering;
+use std::sync::{LazyLock, atomic::AtomicBool};
 use std::time::Duration;
 use windows::Win32::Storage::FileSystem::{FindFileHandle, WIN32_FIND_DATAA};
 
@@ -61,6 +62,8 @@ fn cxx_throw_exception_8_detour(ex_obj: *const c_void, throw_info: *const c_void
     unsafe { CxxThrowExceptionHook.call(ex_obj, throw_info) }
 }
 
+
+
 static_detour! {
     static FindFirstFileAHook: unsafe extern "system" fn(PCSTR, *mut WIN32_FIND_DATAA) -> FindFileHandle;
 }
@@ -69,7 +72,16 @@ fn find_first_file_detour(
     file_name: PCSTR,
     find_file_data: *mut WIN32_FIND_DATAA,
 ) -> FindFileHandle {
-    log::info!("Find first file: {}", unsafe { file_name.display() });
+    static SPOOFED_PROXY_DLL: AtomicBool = AtomicBool::new(false);
+    if  !file_name.is_null() && unsafe { file_name.as_bytes() } == b"*" {
+        //Only spoof once at start
+        if !SPOOFED_PROXY_DLL.fetch_or(true, Ordering::SeqCst) {
+            log::info!("Spoofing FindFirstFileA for proxy dll");
+            // Just let it iterate over wz files
+            return unsafe { FindFirstFileAHook.call(windows::s!("*.wz"), find_file_data) }
+
+        }
+    }
     unsafe { FindFirstFileAHook.call(file_name, find_file_data) }
 }
 
@@ -104,9 +116,10 @@ fn initialize() {
     unsafe { AllocConsole() };
 
     // Patches
+    unsafe { stage_0_hooks(); }
 
     // No logo
-    unsafe { nop(0x60e2db as *mut u8, 16) };
+    unsafe { nop(0x60e2db as *mut u8, 16).unwrap() };
 
     ::std::env::set_var("RUST_LOG", "DEBUG");
     //pretty_env_logger::init_custom_env("RUST_LOG=DEBUG");
@@ -120,13 +133,6 @@ fn init_hooks() -> anyhow::Result<()> {
     log::info!("Hooking...");
 
     unsafe {
-        let handle = GetModuleHandleW(w!("kernel32.dll"))?;
-        let find_first_file_a: FnFindFirstFileA =
-            std::mem::transmute(GetProcAddress(handle, s!("FindFirstFileA")));
-
-        FindFirstFileAHook
-            .initialize(find_first_file_a, find_first_file_detour)?
-            .enable()?;
 
         socket::init_hooks()?;
 
@@ -159,6 +165,20 @@ unsafe extern "stdcall" fn DirectInput8Create(
     log::info!("Creating dinput8...");
     std::thread::spawn(exec);
     (STATE.directinput8create)(hinst, dwversion, riidltf, ppvout, punkouter)
+}
+
+unsafe fn stage_0_hooks() {
+    // Hooks which are required for this dll to work
+    let handle = GetModuleHandleW(w!("kernel32.dll"))
+        .unwrap();
+    let find_first_file_a: FnFindFirstFileA =
+        std::mem::transmute(GetProcAddress(handle, s!("FindFirstFileA")));
+
+    FindFirstFileAHook
+        .initialize(find_first_file_a, find_first_file_detour)
+        .unwrap()
+        .enable()
+        .unwrap();
 }
 
 #[no_mangle]

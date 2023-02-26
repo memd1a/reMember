@@ -1,6 +1,7 @@
 use std::ffi::c_void;
 
 use crate::{fn_ref, fn_ref2, fn_ref_hook};
+use bitflags::bitflags;
 use detour::static_detour;
 use windows::{
     core::{PCSTR, PCWSTR},
@@ -15,7 +16,6 @@ pub type IWzFileSystem = c_void;
 #[derive(Debug)]
 #[repr(C)]
 pub struct ComPtr<T>(pub *mut T);
-
 
 #[derive(Debug, Copy, Clone)]
 #[repr(C)]
@@ -59,19 +59,20 @@ fn_ref2!(
     unsafe extern "cdecl" fn(*const IWzNameSpace)
 );
 
-#[derive(Debug, Clone)]
-#[repr(i32)]
-pub enum ResManParam {
-    DefaultAutoSerialize = 0,
-    AutoSerialize = 1,
-    AutoSerializeNoCache = 2,
-    NoAutoSerialize = 4,
-    AutoSerializeMask = 7,
-    AutoReparse = 0x10,
-    NoAutoReparse = 0x20,
-    AutoReparseMask = 0x30,
+bitflags! {
+    #[repr(transparent)]
+    pub struct ResManParam: u32 {
+        const AUTO_SERIALIZE = 1;
+        const AUTO_SERIALIZE_NO_CACHE = 2;
+        const NO_AUTO_SERIALIZE = 4;
+        const AUTO_REPARSE = 0x10;
+        const NO_AUTO_REPARSE = 0x20;
+        const AUTO_REPARSE_MASK = 0x30;
+        const DEFAULT_AUTO_SERIALIZE = 0;
+        const DEFAULT_AUTO_REPARSE = 0;
+        const RC_AUTO_SERIALIZE_MASK =  Self::AUTO_SERIALIZE.bits | Self::AUTO_SERIALIZE_NO_CACHE.bits | Self::NO_AUTO_SERIALIZE.bits;
+    }
 }
-
 fn_ref2!(
     iwz_res_man_set_param,
     0x9c0920,
@@ -100,7 +101,7 @@ fn_ref2!(
     unsafe extern "thiscall" fn(*mut ZtlBstr, PCSTR)
 );
 
-fn cwvs_app_init_res_man_hook(app: *const CWvsApp) {
+fn cwvs_app_init_res_man_hook(_app: *const CWvsApp) {
     let g_resman: *mut ComPtr<IResMan> = std::ptr::null_mut();
     let g_root: *mut ComPtr<IResMan> = std::ptr::null_mut();
     let p_fs: *mut ComPtr<IWzFileSystem> = std::ptr::null_mut();
@@ -120,7 +121,12 @@ fn cwvs_app_init_res_man_hook(app: *const CWvsApp) {
         pc_create_obj_iwz_res_man(r_name, g_resman, unk_outer);
 
         // TODO: add bitflags and use AutoReparse | AutoSerialize
-        iwz_res_man_set_param((*g_resman).0, ResManParam::AutoReparse, -1, -1);
+        iwz_res_man_set_param(
+            (*g_resman).0,
+            ResManParam::AUTO_REPARSE | ResManParam::AUTO_SERIALIZE,
+            -1,
+            -1,
+        );
         pc_create_obj_iwz_namespace(ns_name, g_root, unk_outer);
 
         pc_set_root_namespace((*g_root).0);
@@ -134,7 +140,6 @@ fn cwvs_app_init_res_man_hook(app: *const CWvsApp) {
 
         bstr_ctor(&mut path, windows::s!("/"));
         iwz_namespace_mount((*g_root).0, path, (*p_fs).0, prio);
-
 
         // Data File System
         pc_create_obj_iwz_filesystem(fs_name, p_fs, unk_outer);

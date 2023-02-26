@@ -79,7 +79,7 @@ where
 }
 
 pub trait PacketOpcodeExt: Sized + EncodePacket {
-    fn as_response<Op: NetOpcode>(self, opcode: Op) -> ResponsePacket<Op, Self> {
+    fn into_response<Op: NetOpcode>(self, opcode: Op) -> ResponsePacket<Op, Self> {
         ResponsePacket::new(opcode, self)
     }
 }

@@ -7,5 +7,13 @@ members = [
 
     # Data
     "data/re-wz",
+
+    # client
+    "client/moople_launchar",
+
+    # server
+    "server/proto95",
+    "server/login",
+    "server/service",
 ]
 exclude = ["client/moople_hook"]

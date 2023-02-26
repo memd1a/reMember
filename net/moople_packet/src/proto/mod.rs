@@ -1,9 +1,9 @@
+pub mod bits;
 pub mod conditional;
 pub mod constant;
 pub mod list;
 pub mod maple_enum;
 pub mod option;
-pub mod packed_bits;
 pub mod padding;
 pub mod primitive;
 pub mod string;
@@ -13,10 +13,11 @@ pub mod wrapped;
 
 use bytes::BufMut;
 
-pub use list::{MapleIndexList, MapleList16, MapleList32, MapleList64, MapleList8};
-pub use packed_bits::MaplePacked;
-
 use crate::{reader::MaplePacketReader, writer::MaplePacketWriter, NetResult};
+pub use conditional::{CondEither, CondOption};
+pub use list::{MapleIndexList, MapleList16, MapleList32, MapleList64, MapleList8};
+//pub use packed_bits::MaplePacked;
+pub use wrapped::{MapleTryWrapped, MapleWrapped};
 
 pub trait DecodePacket<'de>: Sized {
     fn decode_packet(pr: &mut MaplePacketReader<'de>) -> NetResult<Self>;

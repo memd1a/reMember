@@ -1,3 +1,5 @@
+use std::ptr;
+
 use region::Protection;
 
 #[macro_export]
@@ -11,10 +13,6 @@ macro_rules! fn_ref {
             std::mem::transmute($addr_name)
         });
     };
-    /* 
-    ($name:ident,$fn_name:ident,$fn_ty:ty, $addr:tt) => {
-        fn_ref!($name, $fn_name, $fn_ty, concat_idents!($name, _addr), $addr);
-    }*/
 }
 
 
@@ -31,10 +29,6 @@ macro_rules! fn_ref2 {
             });
         }
     };
-    /* 
-    ($name:ident,$fn_name:ident,$fn_ty:ty, $addr:tt) => {
-        fn_ref!($name, $fn_name, $fn_ty, concat_idents!($name, _addr), $addr);
-    }*/
 }
 
 #[macro_export]
@@ -57,12 +51,24 @@ macro_rules! fn_ref_hook2 {
     };
 }
 
-
-pub unsafe fn nop(mut addr: *mut u8, cnt: usize) {
-    region::protect(addr, cnt, Protection::READ_WRITE_EXECUTE).unwrap();
+pub unsafe fn ms_memset(mut addr: *mut u8, b: u8, cnt: usize) -> region::Result<()> {
+    let _handle = region::protect_with_handle(addr, cnt, Protection::READ_WRITE_EXECUTE)?;
 
     for _ in 0..cnt {
-        addr.write_volatile(0x90);
+        addr.write_volatile(b);
         addr = addr.offset(1);
     }
+
+    Ok(())
+}
+
+pub unsafe fn ms_memcpy(addr: *mut u8, src: *const u8, cnt: usize) -> region::Result<()> {
+    let _handle = region::protect_with_handle(addr, cnt, Protection::READ_WRITE_EXECUTE)?;
+
+    ptr::copy(src, addr, cnt);
+    Ok(())   
+}
+
+pub unsafe fn nop(addr: *mut u8, cnt: usize) -> region::Result<()> {
+    ms_memset(addr, 0x90, cnt)
 }

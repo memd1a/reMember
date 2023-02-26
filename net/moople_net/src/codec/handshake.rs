@@ -12,7 +12,7 @@ use crate::{
 
 use super::MAX_HANDSHAKE_LEN;
 
-#[derive(Debug, PartialEq, Eq, PartialOrd)]
+#[derive(Debug, PartialEq, Eq, PartialOrd, Clone)]
 pub struct Handshake {
     pub version: u16,
     pub subversion: String,

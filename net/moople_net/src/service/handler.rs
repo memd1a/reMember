@@ -1,9 +1,42 @@
+use std::{time::Duration, fmt::Debug, error::Error};
+
+use async_trait::async_trait;
 use futures::Future;
-use moople_packet::{DecodePacket, MaplePacketReader};
+use moople_packet::{DecodePacket, MaplePacket, MaplePacketReader, NetError};
 
 use crate::{MapleSession, SessionTransport};
 
 use super::resp::{IntoResponse, Response};
+
+#[async_trait]
+pub trait MapleSessionHandler {
+    type Transport: SessionTransport;
+    type Error: From<NetError> + Debug + Error;
+
+    async fn handle_packet(
+        &mut self,
+        packet: MaplePacket,
+        session: &mut MapleSession<Self::Transport>,
+    ) -> Result<(), Self::Error>;
+}
+
+#[async_trait]
+pub trait MapleServerSessionHandler: MapleSessionHandler {
+    fn get_ping_interval() -> Duration;
+    fn get_ping_packet(&mut self) -> Result<MaplePacket, Self::Error>;
+}
+
+#[async_trait]
+pub trait MakeServerSessionHandler {
+    type Transport: SessionTransport;
+    type Error: From<NetError> + Debug + Error;
+    type Handler: MapleServerSessionHandler<Transport = Self::Transport, Error = Self::Error>;
+
+    async fn make_handler(
+        &mut self,
+        sess: &mut MapleSession<Self::Transport>,
+    ) -> Result<Self::Handler, Self::Error>;
+}
 
 pub async fn call_handler_fn<'a, F, Req, Fut, Trans, State, Resp>(
     state: &'a mut State,
@@ -115,7 +148,7 @@ mod tests {
 
         let s = &mut state;
         let ss = &mut sess;
-        
+
         maple_router_handler!(
             pr,
             s,

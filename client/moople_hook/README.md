@@ -6,16 +6,17 @@ Either use cross(https://github.com/cross-rs/cross) or build this library locall
 
 ## Usage instructions
 
-Rename the built `dinput8.dll` to `dinpuz8.dll` in the `target/release` directory and copy It to your Maple Story directory(same directory as your localhost .exe). When you launch the localhost you should see a console being attached.
+Move the build `dinput8.dll` from the `target/release` directory to your Maple Story directory(same directory as your localhost .exe). When you launch the localhost you should see a console being opened.
 
 ## Features
 
 * Logging Packet structure tracing data
 * Dump the whole string pool
 * Catch exceptions before the process is about to crash
-
+* Skip the logo
 
 ## TODO
 
-* Bypass the dinput8.dll check in the ZApiLoader function
-* Probably moving away from the proxy dll idea and writing a proper launcher
+* Add key dumping feature
+* Config
+* Auto Update via the launcher

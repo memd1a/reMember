@@ -28,6 +28,12 @@ impl<T: PacketLen> PacketLen for CondOption<T> {
     }
 }
 
+impl<T: EncodePacket> EncodePacket for CondOption<T> {
+    fn encode_packet<B: BufMut>(&self, pw: &mut MaplePacketWriter<B>) -> NetResult<()> {
+        self.0.as_ref().map(|p| p.encode_packet(pw)).unwrap_or(Ok(()))
+    }
+}
+
 impl<'de, T> MapleConditional<'de> for CondOption<T>
 where
     T: EncodePacket + DecodePacket<'de> + PacketLen,

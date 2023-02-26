@@ -1,0 +1,15 @@
+[package]
+name = "proto95"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+arrayvec = "0.7.2"
+bitflags = "2.0.0-rc.3"
+bytes = "1.4.0"
+moople_derive = { version = "0.1.0", path = "../../net/moople_derive" }
+moople_packet = { version = "0.1.0", path = "../../net/moople_packet" }
+num_enum = "0.5.11"
+paste = "1.0.11"

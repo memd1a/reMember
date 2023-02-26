@@ -1,10 +1,24 @@
 #[macro_export]
+macro_rules! maple_enum_code {
+    ($name:ident, $repr_ty:ty, $($code_name:ident = $val:expr),+) => {
+        #[derive(Debug, Clone, PartialEq, Eq, num_enum::TryFromPrimitive, num_enum::IntoPrimitive)]
+        #[repr($repr_ty)]
+        pub enum $name {
+            $($code_name = $val,)*
+        }
+
+        $crate::mark_maple_enum!($name);
+    };
+}
+
+#[macro_export]
 macro_rules! mark_maple_enum {
     ($enum_ty:ty) => {
         impl $crate::proto::wrapped::MapleTryWrapped for $enum_ty {
-            type Inner = <$enum_ty as TryFromPrimitive>::Primitive;
+            type Inner = <$enum_ty as num_enum::TryFromPrimitive>::Primitive;
 
             fn maple_try_from(v: Self::Inner) -> $crate::NetResult<Self> {
+                use num_enum::TryFromPrimitive;
                 Ok(<$enum_ty>::try_from_primitive(v)?)
             }
             fn maple_into_inner(&self) -> Self::Inner {
@@ -93,5 +107,20 @@ mod tests {
 
             //TODO find a way to compare: assert_eq!(dec.maple_into_inner(), d.maple_into_inner());
         }
+    }
+
+    #[test]
+    fn code() {
+        maple_enum_code!(
+            Code,
+            u8,
+            A = 1,
+            B = 2,
+            C = 3
+        );
+
+        assert_eq!(Code::A, Code::A);
+        let a: u8 = Code::A.into();
+        assert_eq!(a, 1u8);
     }
 }
