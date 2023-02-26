@@ -1,3 +1,6 @@
+
+
+
 #[macro_export]
 macro_rules! maple_constant {
     ($name:ident, $ty:ty, $val:expr) => {
@@ -11,11 +14,12 @@ macro_rules! maple_constant {
                 $val
             }
 
-            fn maple_from(v: Self::Inner) -> Self {
-                //TODO use try from
-                if v != $val {
+            fn maple_from(_v: Self::Inner) -> Self {
+                //TODO should the constant be verified?
+                // maybe just in debug mode not sure yet
+                /*if v != $val {
                     panic!("Invalid constant")
-                }
+                }*/
 
                 Self
             }
