@@ -14,7 +14,7 @@ pub mod char;
 pub mod world;
 
 #[derive(Debug, MooplePacket)]
-pub struct MachineId(pub [u8; 10]);
+pub struct MachineId(pub [u8; 0x10]);
 pub type ClientKey = [u8; 8];
 
 pub struct LoginResultCode {}

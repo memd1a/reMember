@@ -1,5 +1,5 @@
 [package]
-name = "login"
+name = "mono"
 version = "0.1.0"
 edition = "2021"
 
@@ -8,9 +8,8 @@ edition = "2021"
 [dependencies]
 anyhow = "1.0.69"
 async-trait = "0.1.64"
-bytes = "1.4.0"
 log = "0.4.17"
+login = { version = "0.1.0", path = "../login" }
 moople_net = { version = "0.1.0", path = "../../net/moople_net" }
-moople_packet = { version = "0.1.0", path = "../../net/moople_packet" }
-proto95 = { version = "0.1.0", path = "../proto95" }
+pretty_env_logger = "0.4.0"
 tokio = "1.25.0"

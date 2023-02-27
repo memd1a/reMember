@@ -22,6 +22,10 @@ impl<'a> MaplePacketReader<'a> {
         }
     }
 
+    pub fn into_inner(self) -> &'a [u8] {
+        self.inner.into_inner()
+    }
+
     fn check_size_typed<T>(&self, n: usize) -> NetResult<()> {
         if self.inner.remaining() >= n {
             Ok(())

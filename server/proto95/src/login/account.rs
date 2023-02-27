@@ -3,7 +3,7 @@ use moople_packet::{packet_opcode, proto::{option::MapleOption8, CondOption, tim
 
 use crate::{recv_opcodes::RecvOpcodes, send_opcodes::SendOpcodes, shared::{Gender, OptionGender}};
 
-use super::{MachineId, LoginResultHeader, ClientKey, LoginOpt, BanReason};
+use super::{MachineId, LoginResultHeader, ClientKey, LoginOpt, BanReason, StartMode};
 
 pub type AccountId = u32;
 
@@ -14,7 +14,7 @@ pub struct CheckPasswordReq {
     pub pw: String,
     pub machine_id: MachineId,
     pub game_room_client: u32,
-    pub start_mode: u8,
+    pub start_mode: StartMode,
     // TODO: Always 0?
     pub u1: u8,
     pub u2: u8,
@@ -34,8 +34,8 @@ pub struct AccountInfo {
     account_id: u32,
     gender: OptionGender,
     grade_code: u8,
-    /// The sub_trade_code and test_acc are decoded as u16
-    /// on the client
+    // note: The sub_trade_code and test_acc are decoded as u16
+    // on the client
     sub_grade_code: u8,
     test_acc: bool,
     country_id: u8,

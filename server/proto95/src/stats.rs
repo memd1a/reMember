@@ -103,7 +103,7 @@ macro_rules! maple_stats {
 
                     $(
                         if self.[<$stat_name:lower>].is_some() {
-                            flags = flags |  $flag_name::$stat_name;
+                            flags  |= $flag_name::$stat_name;
                         }
                     )*;
 
@@ -138,6 +138,7 @@ macro_rules! maple_stats {
 
             #[derive(Debug, moople_derive::MooplePacket)]
             pub struct [<$name All>] {
+                
                 $(pub [<$stat_name:lower>]: $stat_ty,)*
             }
 

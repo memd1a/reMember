@@ -8,13 +8,13 @@ pub trait HandshakeGenerator {
     fn generate_handshake(&self) -> Handshake;
 }
 
-pub struct StdHandshakeGenerator {
+pub struct BasicHandshakeGenerator {
     version: u16,
     sub_version: String,
     locale: u8,
 }
 
-impl StdHandshakeGenerator {
+impl BasicHandshakeGenerator {
     pub fn new(version: u16, sub_version: String, locale: u8) -> Self {
         Self {
             version,
@@ -32,7 +32,7 @@ impl StdHandshakeGenerator {
     }
 }
 
-impl HandshakeGenerator for StdHandshakeGenerator {
+impl HandshakeGenerator for BasicHandshakeGenerator {
     fn generate_handshake(&self) -> Handshake {
         let mut rng = rand::thread_rng();
         Handshake {

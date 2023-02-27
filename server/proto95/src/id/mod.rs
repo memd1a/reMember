@@ -5,8 +5,7 @@ pub mod job_id;
 pub mod map_id;
 
 use moople_derive::MooplePacket;
-use moople_packet::mark_maple_enum;
-use num_enum::{IntoPrimitive, TryFromPrimitive};
+use moople_packet::maple_enum_code;
 
 pub use self::item_id::ItemId;
 pub use self::job_id::JobClass;
@@ -64,9 +63,9 @@ impl SkillId {
     }
 }
 
-#[derive(Debug, Eq, PartialEq, Copy, Clone, TryFromPrimitive, IntoPrimitive)]
-#[repr(u8)]
-pub enum Skin {
+maple_enum_code!(
+    Skin,
+    u8,
     Normal = 0,
     Dark = 1,
     Black = 2,
@@ -74,7 +73,5 @@ pub enum Skin {
     Blue = 4,
     Green = 5,
     White = 9,
-    Pink = 10,
-}
-
-mark_maple_enum!(Skin);
+    Pink = 10
+);

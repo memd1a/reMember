@@ -1,4 +1,4 @@
-use std::{time::Duration, fmt::Debug, error::Error};
+use std::{fmt::Debug, time::Duration};
 
 use async_trait::async_trait;
 use futures::Future;
@@ -11,7 +11,7 @@ use super::resp::{IntoResponse, Response};
 #[async_trait]
 pub trait MapleSessionHandler {
     type Transport: SessionTransport;
-    type Error: From<NetError> + Debug + Error;
+    type Error: From<NetError> + Debug;
 
     async fn handle_packet(
         &mut self,
@@ -29,7 +29,7 @@ pub trait MapleServerSessionHandler: MapleSessionHandler {
 #[async_trait]
 pub trait MakeServerSessionHandler {
     type Transport: SessionTransport;
-    type Error: From<NetError> + Debug + Error;
+    type Error: From<NetError> + Debug;
     type Handler: MapleServerSessionHandler<Transport = Self::Transport, Error = Self::Error>;
 
     async fn make_handler(
@@ -38,20 +38,29 @@ pub trait MakeServerSessionHandler {
     ) -> Result<Self::Handler, Self::Error>;
 }
 
-pub async fn call_handler_fn<'a, F, Req, Fut, Trans, State, Resp>(
-    state: &'a mut State,
-    session: &'a mut MapleSession<Trans>,
-    pr: &'a mut MaplePacketReader<'a>,
+// TODO: sooner or later there should be a proper service/handler trait for this
+// Prior attempts to define a service trait failed for several reasons
+// 1. Unable to reuse the session to send the response after the handler was called
+// 2. Lifetime 'a in DecodePacket<'a> is close to impossible to express while implementing the trait for a FnMut
+// If you have better ideas how to implement this I'm completely open to this
+// Also the current design is not final, It'd probably make sense to store the state
+// in the session to avoid having 2 mut references, however It'd be quiet a challenge to call self methods
+// on the state, cause you'd still like to have a session to send packets
+
+pub async fn call_handler_fn<'session, F, Req, Fut, Trans, State, Resp>(
+    state: &'session mut State,
+    session: &'session mut MapleSession<Trans>,
+    mut pr: MaplePacketReader<'session>,
     mut f: F,
 ) -> anyhow::Result<()>
 where
     Trans: SessionTransport + Send + Unpin,
-    F: FnMut(&'a mut State, Req) -> Fut,
+    F: FnMut(&'session mut State, Req) -> Fut,
     Fut: Future<Output = anyhow::Result<Resp>>,
-    Req: DecodePacket<'a>,
+    Req: DecodePacket<'session>,
     Resp: IntoResponse,
 {
-    let req = Req::decode_packet(pr)?;
+    let req = Req::decode_packet(&mut pr)?;
     let resp = f(state, req).await?.into_response();
     resp.send(session).await?;
     Ok(())
@@ -59,22 +68,23 @@ where
 
 #[macro_export]
 macro_rules! maple_router_handler {
-    ($pr:ident, $state:ident, $session:ident, $default_handler:expr, $($req:ty => $handler_fn:expr,)*) => {
-        async {
-            let recv_op = $pr.read_opcode()?;
+    ($name: ident, $state:ty, $session:ty, $err:ty, $default_handler:expr, $($req:ty => $handler_fn:expr,)*) => {
+        async fn $name<'session>(state: &'session mut $state, session: &'session mut $session, mut pr: moople_packet::MaplePacketReader<'session>) ->  Result<(), $err> {
+            let recv_op = pr.read_opcode()?;
             match recv_op {
                 $(
-                    <$req as moople_packet::HasOpcode>::OPCODE  => { $crate::service::handler::call_handler_fn::<'_, _, $req, _, _, _, _>($state, $session, &mut $pr, $handler_fn).await? }
+                    <$req as moople_packet::HasOpcode>::OPCODE  => $crate::service::handler::call_handler_fn(state, session, pr, $handler_fn).await,
                 ),*
-                _ =>   { $default_handler($state, &mut $pr).await? }
+                _ =>   $default_handler(state, pr).await
             }
-            anyhow::Ok(())
         }
     };
 }
 
 #[cfg(test)]
 mod tests {
+    use std::io;
+
     use moople_packet::{
         opcode::HasOpcode, proto::wrapped::MapleWrapped, MaplePacketReader, MaplePacketWriter,
     };
@@ -117,7 +127,7 @@ mod tests {
             Ok(())
         }
 
-        async fn handle_default(&mut self, _pr: &mut MaplePacketReader<'_>) -> anyhow::Result<()> {
+        async fn handle_default(&mut self, _pr: MaplePacketReader<'_>) -> anyhow::Result<()> {
             Ok(())
         }
     }
@@ -144,20 +154,19 @@ mod tests {
         pw.write_u16(123);
 
         let pkt = pw.into_packet();
-        let mut pr = pkt.into_reader();
-
-        let s = &mut state;
-        let ss = &mut sess;
 
         maple_router_handler!(
-            pr,
-            s,
-            ss,
+            handle,
+            State,
+            MapleSession<io::Cursor<Vec<u8>>>,
+            anyhow::Error,
             State::handle_default,
             Req1 => State::handle_req1,
-        )
-        .await
-        .unwrap();
+        );
+
+        handle(&mut state, &mut sess, pkt.into_reader())
+            .await
+            .unwrap();
 
         assert_eq!(state.req1.0, 123);
     }

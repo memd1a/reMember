@@ -2,6 +2,7 @@ use std::{io, marker::PhantomData};
 
 use futures::{channel::mpsc, SinkExt, Stream, StreamExt};
 use moople_packet::{MaplePacket, NetError};
+use tokio::net::{TcpListener, TcpStream, ToSocketAddrs};
 use tokio_util::sync::CancellationToken;
 
 use crate::{codec::handshake::Handshake, MapleSession};
@@ -107,7 +108,8 @@ where
             let res = async move {
                 let mut session = MapleSession::initialize_server_session(io, &handshake).await?;
                 let handler = mk.make_handler(&mut session).await?;
-                let res = Self::exec_server_session(session, handler, broadcast_rx, ct_session).await;
+                let res =
+                    Self::exec_server_session(session, handler, broadcast_rx, ct_session).await;
                 if let Err(ref err) = res {
                     log::info!("Session exited with error: {:?}", err);
                 }
@@ -117,7 +119,7 @@ where
 
             let res = res.await;
             if let Err(ref err) = res {
-                log::error!("Session error: {}", err);
+                log::error!("Session error: {:?}", err);
             }
 
             res
@@ -159,10 +161,27 @@ where
         self.handles.retain(|handle| handle.is_running());
     }
 
-    pub async fn run<M, S>(
-        &mut self,
-        mut io: S,
-    ) -> Result<(), MH::Error>
+    fn handle_incoming(&mut self, io: MH::Transport) -> Result<(), MH::Error>
+    where
+        MH: Send + Clone + 'static,
+        MH::Error: From<io::Error> + Send + 'static,
+        MH::Handler: Send + 'static,
+        MH::Transport: Send + Unpin + 'static,
+    {
+        let handshake = self.handshake_gen.generate_handshake();
+        let handle =
+            MapleSessionHandle::spawn_server_session(io, self.make_handler.clone(), handshake)?;
+        // TODO: there should be an upper limit for active connections
+        // cleaning closed connection should operate on Vec<Option<Handle>> probably
+        // so a new conneciton just has to find a gap
+        // If the last insert/clean index is stored performance should be good
+        self.remove_closed_handles();
+        self.handles.push(handle);
+
+        Ok(())
+    }
+
+    pub async fn run<S>(&mut self, mut io: S) -> Result<(), MH::Error>
     where
         MH: Send + Clone + 'static,
         MH::Error: From<io::Error> + Send + 'static,
@@ -172,17 +191,28 @@ where
     {
         while let Some(io) = io.next().await {
             let io = io?;
-            let handshake = self.handshake_gen.generate_handshake();
-            let handle =
-                MapleSessionHandle::spawn_server_session(io, self.make_handler.clone(), handshake)?;
-            // TODO: there should be an upper limit for active connections
-            // cleaning closed connection should operate on Vec<Option<Handle>> probably
-            // so a new conneciton just has to find a gap
-            // If the last insert/clean index is stored performance should be good
-            self.remove_closed_handles();
-            self.handles.push(handle);
+            self.handle_incoming(io)?;
         }
 
         Ok(())
+    }
+}
+
+impl<MH, H> MapleServer<MH, H>
+where
+    H: HandshakeGenerator,
+    MH::Error: From<io::Error> + Send + 'static,
+    MH::Handler: Send + 'static,
+    MH::Transport: Send + Unpin + 'static,
+    MH: MakeServerSessionHandler<Transport = TcpStream> + Send + Clone + 'static,
+    MH::Error: From<io::Error> + Send + 'static,
+{
+    pub async fn serve_tcp(&mut self, addr: impl ToSocketAddrs) -> Result<(), MH::Error> {
+        let listener = TcpListener::bind(addr).await?;
+
+        loop {
+            let (io, _) = listener.accept().await?;
+            self.handle_incoming(io)?;
+        }
     }
 }
