@@ -9,6 +9,18 @@ macro_rules! maple_enum_code {
 
         $crate::mark_maple_enum!($name);
     };
+
+    ($name:ident, $repr_ty:ty, default($def_name:ident = $def_val:expr), $($code_name:ident = $val:expr),+,) => {
+        #[derive(Debug, Clone, PartialEq, Eq, num_enum::TryFromPrimitive, num_enum::IntoPrimitive, Default)]
+        #[repr($repr_ty)]
+        pub enum $name {
+            #[default]
+            $def_name = $def_val,
+            $($code_name = $val,)*
+        }
+
+        $crate::mark_maple_enum!($name);
+    };
 }
 
 #[macro_export]

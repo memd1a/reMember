@@ -9,8 +9,10 @@ edition = "2021"
 anyhow = "1.0.69"
 async-trait = "0.1.64"
 bytes = "1.4.0"
+data = { version = "0.1.0", path = "../data" }
 log = "0.4.17"
 moople_net = { version = "0.1.0", path = "../../net/moople_net" }
 moople_packet = { version = "0.1.0", path = "../../net/moople_packet" }
 proto95 = { version = "0.1.0", path = "../proto95" }
+services = { version = "0.1.0", path = "../services" }
 tokio = "1.25.0"

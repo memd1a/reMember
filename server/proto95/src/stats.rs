@@ -142,6 +142,7 @@ macro_rules! maple_stats {
                 $(pub [<$stat_name:lower>]: $stat_ty,)*
             }
 
+            #[derive(Debug, Clone)]
             pub struct [<$flag_name All>];
 
             impl moople_packet::proto::MapleWrapped for [<$flag_name All>] {

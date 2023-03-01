@@ -7,3 +7,4 @@ pub mod login;
 pub mod id;
 pub mod shared;
 pub mod stats;
+pub mod game;

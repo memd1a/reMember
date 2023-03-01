@@ -21,11 +21,17 @@ fn read_up_to(r: &mut impl std::io::Read, mut buf: &mut [u8]) -> Result<usize, s
 
 #[derive(Debug)]
 pub enum Patch {
-    //TODO ensure by construction slices a the same len
     Replace {
         needle: &'static [u8],
         replace: &'static [u8],
     },
+}
+
+impl Patch {
+    pub fn replace(needle: &'static [u8], replace: &'static  [u8]) -> Self {
+        assert_eq!(needle.len(), replace.len());
+        Self::Replace { needle, replace }
+    }
 }
 
 pub struct Replacer<R, W> {

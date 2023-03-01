@@ -1,26 +1,28 @@
 use moople_derive::MooplePacket;
-use moople_packet::{mark_maple_enum, packet_opcode, proto::option::MapleOption8};
-use num_enum::{TryFromPrimitive, IntoPrimitive};
+use moople_packet::{maple_enum_code, packet_opcode, proto::option::MapleOption8};
 
 use crate::{recv_opcodes::RecvOpcodes, send_opcodes::SendOpcodes};
 
-#[derive(Debug, Eq, PartialEq, Copy, Clone, TryFromPrimitive, IntoPrimitive)]
-#[repr(u8)]
-pub enum CheckPinResult {
+maple_enum_code!(
+    CheckPinResult,
+    u8,
     Accepted = 0,
     RegisterNewPin = 1,
     InvalidPin = 2,
     SystemError = 3,
     EnterPin = 4,
     //TODO valid?
-    ResetLogin = 7,
+    ResetLogin = 7
+);
+
+impl From<CheckPinResult> for CheckPinResp {
+    fn from(value: CheckPinResult) -> Self {
+        CheckPinResp(value)
+    }
 }
-mark_maple_enum!(CheckPinResult);
 
 #[derive(MooplePacket, Debug)]
-pub struct CheckPinResp {
-    pub result: CheckPinResult,
-}
+pub struct CheckPinResp( pub CheckPinResult);
 packet_opcode!(CheckPinResp, SendOpcodes::CheckPinCodeResult);
 
 #[derive(MooplePacket, Debug)]

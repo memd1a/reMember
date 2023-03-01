@@ -8,6 +8,7 @@ pub trait HandshakeGenerator {
     fn generate_handshake(&self) -> Handshake;
 }
 
+#[derive(Debug, Clone)]
 pub struct BasicHandshakeGenerator {
     version: u16,
     sub_version: String,

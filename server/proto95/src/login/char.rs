@@ -92,6 +92,22 @@ packet_opcode!(CreateCharResp, SendOpcodes::CreateNewCharacterResult);
 
 #[derive(Debug, Clone, TryFromPrimitive, IntoPrimitive)]
 #[repr(u8)]
+pub enum SelectCharResultCode {
+    //TODO verify
+    Success = 0,
+    DBFail = 6,
+    UnknownErr = 9,
+    Timeout = 0xA,
+    InvalidBirthday = 0x12,
+    InvalidPic = 0x14,
+    ErrGuildMaster = 0x16,
+    ErrPendingWedding = 0x18,
+    ErrPendingWorldTransfer = 0x1A,
+    ErrHasFamily = 0x1D,
+}
+
+#[derive(Debug, Clone, TryFromPrimitive, IntoPrimitive)]
+#[repr(u8)]
 pub enum DeleteCharResult {
     //TODO verify
     Success = 0,

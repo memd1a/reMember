@@ -28,7 +28,7 @@ use packet_struct::RECV_PACKET_CTX;
 use std::ffi::c_void;
 use std::sync::atomic::Ordering;
 use std::sync::{LazyLock, atomic::AtomicBool};
-use std::time::Duration;
+use std::time::{ Duration, Instant };
 use windows::Win32::Storage::FileSystem::{FindFileHandle, WIN32_FIND_DATAA};
 
 use strings::dump_string_pool;
@@ -38,6 +38,7 @@ use windows::Win32::System::Console::AllocConsole;
 use windows::Win32::System::LibraryLoader::{GetModuleHandleW, GetProcAddress, LoadLibraryA};
 use windows::Win32::System::SystemServices::{DLL_PROCESS_ATTACH, DLL_PROCESS_DETACH};
 use windows::{s, w};
+
 
 use crate::util::nop;
 
@@ -185,7 +186,9 @@ unsafe fn stage_0_hooks() {
 #[allow(non_snake_case, unused_variables)]
 extern "system" fn DllMain(dll_module: HINSTANCE, call_reason: u32, reserved: *mut c_void) -> BOOL {
     match call_reason {
-        DLL_PROCESS_ATTACH => initialize(),
+        DLL_PROCESS_ATTACH => {
+            initialize();
+        },
         DLL_PROCESS_DETACH => (),
         _ => (),
     }

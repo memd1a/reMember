@@ -8,8 +8,11 @@ edition = "2021"
 [dependencies]
 anyhow = "1.0.69"
 async-trait = "0.1.64"
+data = { version = "0.1.0", path = "../data" }
+game = { version = "0.1.0", path = "../game" }
 log = "0.4.17"
 login = { version = "0.1.0", path = "../login" }
 moople_net = { version = "0.1.0", path = "../../net/moople_net" }
 pretty_env_logger = "0.4.0"
+services = { version = "0.1.0", path = "../services" }
 tokio = "1.25.0"

@@ -10,12 +10,6 @@ use serde::{Deserialize, Serialize};
 
 use crate::{PACKET_IN_FILE, PACKET_OUT_FILE, socket::{CInPacket, CPacket}};
 
-/*
-TODO exception handling
-   for Decode: call    __CxxThrowException@8(might aswell check before decoding)
-
-*/
-
 #[derive(Debug, Serialize, Deserialize)]
 pub enum PacketStructTy {
     I8,

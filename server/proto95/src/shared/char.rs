@@ -23,9 +23,10 @@ const CHAR_PET_LEN: usize = 3;
 pub type CashID = u64;
 pub type PetIds = [ItemId; CHAR_PET_LEN];
 //TODO:
-pub type Pets = [ItemId; CHAR_PET_LEN];
+pub type Pets = [u64; CHAR_PET_LEN];
 pub type PetCashIds = [CashID; CHAR_PET_LEN];
 pub type Money = u32;
+pub type CharacterId = u32;
 
 #[derive(MooplePacket, Debug)]
 pub struct ExtendedSP {
@@ -258,6 +259,8 @@ pub struct CharDataHeader {
     pub combat_orders: u8,
     pub extra_data: MapleOption8<UnknownCharExtraData>,
 }
+
+
 
 maple_stats!(
     CharData,

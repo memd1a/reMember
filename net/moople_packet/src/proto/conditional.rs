@@ -20,6 +20,18 @@ pub trait MapleConditional<'de>: Sized {
 #[derive(Debug, PartialEq, Eq, Clone, Copy, Default)]
 pub struct CondOption<T>(pub Option<T>);
 
+impl<T> From<Option<T>> for CondOption<T> {
+    fn from(value: Option<T>) -> Self {
+        CondOption(value)
+    }
+}
+
+impl<T> From<CondOption<T>> for Option<T> {
+    fn from(value: CondOption<T>) -> Self {
+        value.0
+    }
+}
+
 impl<T: PacketLen> PacketLen for CondOption<T> {
     const SIZE_HINT: Option<usize> = None;
 
@@ -79,6 +91,12 @@ impl<T> DerefMut for CondOption<T> {
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub struct CondEither<L, R>(pub Either<L, R>);
+
+impl<L, R> From<Either<L, R>> for CondEither<L, R> {
+    fn from(value: Either<L, R>) -> Self {
+        CondEither(value)
+    }
+}
 
 impl<L: PacketLen, R: PacketLen> PacketLen for CondEither<L, R> {
     const SIZE_HINT: Option<usize> = None;

@@ -14,8 +14,10 @@ members = [
     # server
     "server/proto95",
     "server/login",
+    "server/game",
     "server/services",
     "server/mono",
     "server/data",
+    "server/data/migration",
 ]
 exclude = ["client/moople_hook"]

@@ -1,13 +1,8 @@
 pub mod pin;
 use moople_derive::MooplePacket;
-use moople_packet::{
-    maple_enum_code, packet_opcode,
-    proto::{conditional::CondOption},
-};
+use moople_packet::{maple_enum_code, packet_opcode, proto::conditional::CondOption};
 
-use crate::{
-    recv_opcodes::RecvOpcodes,
-};
+use crate::recv_opcodes::RecvOpcodes;
 
 pub mod account;
 pub mod char;
@@ -17,8 +12,6 @@ pub mod world;
 pub struct MachineId(pub [u8; 0x10]);
 pub type ClientKey = [u8; 8];
 
-pub struct LoginResultCode {}
-
 #[derive(MooplePacket, Debug)]
 pub struct CreateSecurityHandleReq;
 packet_opcode!(CreateSecurityHandleReq, RecvOpcodes::CreateSecurityHandle);
@@ -27,7 +20,7 @@ maple_enum_code!(StartMode, u8, WebStart = 0, Unknown1 = 1, GameLaunching = 2);
 
 impl StartMode {
     pub fn has_system_info(&self) -> bool {
-        self != &Self::Unknown1
+        self == &Self::Unknown1
     }
 }
 
@@ -47,13 +40,22 @@ pub struct SystemInfo {
     start_mode: u8,
 }
 
-
+maple_enum_code!(
+    RegStateId,
+    u8,
+    // Both work `Registered` fine as success codes
+    default(Registered0 = 0),
+    Registered1 = 1,
+    // Opens a verify code urlin the browser
+    Verify2 = 2,
+    Verify3 = 3,
+);
 
 #[derive(Debug, MooplePacket, Default)]
 pub struct LoginResultHeader {
-    pub reg: u8,
-    //TODO useDay?
-    pub unknown2: u32,
+    pub reg: RegStateId,
+    // Unused variable
+    pub unknown: u32,
 }
 
 maple_enum_code!(

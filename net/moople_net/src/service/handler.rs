@@ -68,13 +68,13 @@ where
 
 #[macro_export]
 macro_rules! maple_router_handler {
-    ($name: ident, $state:ty, $session:ty, $err:ty, $default_handler:expr, $($req:ty => $handler_fn:expr,)*) => {
+    ($name: ident, $state:ty, $session:ty, $err:ty, $default_handler:expr, $($req:ty => $handler_fn:expr),* $(,)?) => {
         async fn $name<'session>(state: &'session mut $state, session: &'session mut $session, mut pr: moople_packet::MaplePacketReader<'session>) ->  Result<(), $err> {
             let recv_op = pr.read_opcode()?;
             match recv_op {
                 $(
                     <$req as moople_packet::HasOpcode>::OPCODE  => $crate::service::handler::call_handler_fn(state, session, pr, $handler_fn).await,
-                ),*
+                )*
                 _ =>   $default_handler(state, pr).await
             }
         }

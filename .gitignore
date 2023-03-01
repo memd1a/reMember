@@ -3,7 +3,10 @@
 **/target
 
 # Env files
-.env
+*.env
+
+# sqlite databases
+*.db
 
 # PCap logs
 *.pcapng

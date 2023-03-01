@@ -1,12 +1,18 @@
 use moople_derive::MooplePacket;
-use moople_packet::{packet_opcode, proto::{option::MapleOption8, CondOption, time::MapleTime}, maple_packet_enum};
+use moople_packet::{
+    maple_packet_enum, packet_opcode,
+    proto::{option::MapleOption8, time::MapleTime, CondOption},
+};
 
-use crate::{recv_opcodes::RecvOpcodes, send_opcodes::SendOpcodes, shared::{Gender, OptionGender}};
+use crate::{
+    recv_opcodes::RecvOpcodes,
+    send_opcodes::SendOpcodes,
+    shared::{Gender, OptionGender},
+};
 
-use super::{MachineId, LoginResultHeader, ClientKey, LoginOpt, BanReason, StartMode};
+use super::{BanReason, ClientKey, LoginOpt, LoginResultHeader, MachineId, StartMode};
 
 pub type AccountId = u32;
-
 
 #[derive(MooplePacket, Debug)]
 pub struct CheckPasswordReq {
@@ -65,8 +71,6 @@ pub struct GuestAccountInfo {
     guest_id_url: String,
 }
 
-
-
 #[derive(MooplePacket, Debug)]
 pub struct LoginAccountExtraInfo {
     pub skip_pin: bool,
@@ -101,7 +105,7 @@ pub struct SuccessResult {
 }
 
 maple_packet_enum!(
-    LoginResult,
+    CheckPasswordResp,
     u8,
     Success(SuccessResult) => 0,
     BlockedIp(BlockedIp) => 2,
@@ -114,14 +118,7 @@ maple_packet_enum!(
     TOS(LoginResultHeader) => 23,
     Unknown(LoginResultHeader) => 255
 );
-
-#[derive(MooplePacket, Debug)]
-pub struct CheckPasswordResp {
-    pub result: LoginResult,
-}
 packet_opcode!(CheckPasswordResp, SendOpcodes::CheckPasswordResult);
-
-
 
 #[derive(Debug, MooplePacket)]
 pub struct SetGenderReq {
@@ -149,7 +146,6 @@ pub struct SetGenderResp {
     pub success: bool,
 }
 packet_opcode!(SetGenderResp, SendOpcodes::SetAccountResult);
-
 
 #[derive(MooplePacket, Debug)]
 pub struct ConfirmEULAReq {
