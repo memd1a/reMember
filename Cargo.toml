@@ -7,15 +7,16 @@ members = [
 
     # Data
     "data/re-wz",
+    "data/game_data",
 
     # client
     "client/moople_launchar",
 
     # server
+    "server/shrooming",
     "server/proto95",
     "server/login",
     "server/game",
-    "server/services",
     "server/mono",
     "server/data",
     "server/data/migration",

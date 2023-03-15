@@ -26,7 +26,7 @@ impl<'de, Hdr, FlagData> EncodePacket for PartialFlag<Hdr, FlagData>
 where
     Hdr: EncodePacket,
     FlagData: PartialFlagData<'de>,
-    FlagData::Flags: EncodePacket,
+    FlagData::Flags: EncodePacket + std::fmt::Debug,
 {
     fn encode_packet<T: bytes::BufMut>(&self, pw: &mut MaplePacketWriter<T>) -> NetResult<()> {
         let flags = self.data.get_flags();
@@ -70,11 +70,11 @@ where
 
 #[macro_export]
 macro_rules! maple_stats {
-    ($name:ident, $flag_name:ident, $flag_ty:ty, $hdr_ty:ty, $($stat_name:ident($stat_ty:ty) => $stat_ix:expr),* $(,)?) => {
+    ($name:ident, $flag_name:ident, $flag_ty:ty, $($stat_name:ident($stat_ty:ty) => $stat_ix:expr),* $(,)?) => {
         bitflags::bitflags! {
             #[derive(Debug, Clone, Default)]
             pub struct $flag_name: $flag_ty {
-                $(const $stat_name = 1 << $stat_ix;)*
+                $(const $stat_name = $stat_ix;)*
             }
         }
 
@@ -88,7 +88,7 @@ macro_rules! maple_stats {
             }
 
 
-            #[derive(Debug)]
+            #[derive(Debug, Default)]
             pub struct [<$name Partial>] {
                 $(
                     pub [<$stat_name:lower>]: moople_packet::proto::CondOption<$stat_ty>,
@@ -172,7 +172,6 @@ mod tests {
             TestStats,
             TestStatsFlags,
             u32,
-            (),
             A(u8) => 0,
             B(u16) => 1,
         );

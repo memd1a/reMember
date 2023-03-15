@@ -1,11 +1,11 @@
 use std::net::{IpAddr, SocketAddr};
 
+use data::services::{server_info::ServerInfo, Services, SharedServices, meta::meta_service::MetaService};
 use login::{config::LoginConfig, LoginHandler};
 use moople_net::service::{
-    handler::MakeServerSessionHandler, session_svc::MapleServer, BasicHandshakeGenerator,
+    handler::{MakeServerSessionHandler, BroadcastSender}, session_svc::MapleServer, BasicHandshakeGenerator,
     HandshakeGenerator,
 };
-use services::{server_info::ServerInfo, Services, SharedServices};
 use tokio::{net::TcpStream, task::JoinSet};
 
 static LOGIN_CFG: &LoginConfig = &LoginConfig {
@@ -32,6 +32,7 @@ impl MakeServerSessionHandler for MakeLoginHandler {
     async fn make_handler(
         &mut self,
         sess: &mut moople_net::MapleSession<Self::Transport>,
+        _broadcast_tx: BroadcastSender
     ) -> Result<Self::Handler, Self::Error> {
         Ok(LoginHandler::new(
             self.services.clone(),
@@ -40,8 +41,6 @@ impl MakeServerSessionHandler for MakeLoginHandler {
         ))
     }
 }
-
-
 
 async fn srv_login_server(
     addr: impl tokio::net::ToSocketAddrs,
@@ -57,8 +56,13 @@ async fn srv_game_server(
     addr: impl tokio::net::ToSocketAddrs,
     handshake_gen: impl HandshakeGenerator,
     services: SharedServices,
+    world_id: u32,
+    channel_id: u16,
 ) -> anyhow::Result<()> {
-    let mut game_server = MapleServer::new(handshake_gen, game::MakeGameHandler::new(services));
+    let mut game_server = MapleServer::new(
+        handshake_gen,
+        game::MakeGameHandler::new(services, channel_id, world_id),
+    );
     game_server.serve_tcp(addr).await?;
     Ok(())
 }
@@ -94,7 +98,9 @@ async fn main() -> anyhow::Result<()> {
     // Create login server
     let handshake_gen = BasicHandshakeGenerator::new(95, "1".to_string(), 8);
 
-    let services = Services::seeded_in_memory(servers).await?.as_shared();
+    let meta = Box::new(MetaService::load_from_dir("../../game_data/rbin".into())?);
+
+    let services = Services::seeded_in_memory(servers, Box::leak(meta)).await?.as_shared();
     let (acc_id, char_id) = services.seed_acc_char().await?;
     log::info!("Created test account {acc_id} - char: {char_id}");
 
@@ -109,6 +115,8 @@ async fn main() -> anyhow::Result<()> {
             SocketAddr::new(bind_addr, BASE_PORT + 1 + ch as u16),
             handshake_gen.clone(),
             services.clone(),
+            0,
+            ch as u16,
         ));
     }
 

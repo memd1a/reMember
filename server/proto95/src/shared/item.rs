@@ -38,6 +38,15 @@ mark_maple_bit_flags!(ItemBundleFlags);
 
 bitflags::bitflags! {
     #[derive(Copy, Clone, Debug, PartialEq, Eq)]
+    pub struct ItemPetFlags : u16 {
+        const Protected = 0x01;
+        const TradingPossible = 0x02;
+    }
+}
+mark_maple_bit_flags!(ItemPetFlags);
+
+bitflags::bitflags! {
+    #[derive(Copy, Clone, Debug, PartialEq, Eq)]
     pub struct ItemEquipFlags : u16 {    
         const Protected = 0x01;
         const PreventSlipping = 0x02;
@@ -62,8 +71,6 @@ pub struct PetItemInfo {
 }
 #[derive(Debug, MooplePacket)]
 pub struct EquipStats {
-    pub upgrade_slots: u8,
-    pub level: u8,
     pub str: u16,
     pub dex: u16,
     pub int: u16,
@@ -79,7 +86,14 @@ pub struct EquipStats {
     pub craft: u16,
     pub speed: u16,
     pub jump: u16,
-    pub owner: String, /* stitle */
+}
+
+#[derive(Debug, MooplePacket)]
+pub struct EquipAllStats {
+    pub remaining_upgrade_slots: u8,
+    pub upgrade_count: u8,
+    pub stats: EquipStats,
+    pub title: String, /* stitle */
     pub flags: ItemFlags,
 }
 
@@ -112,12 +126,12 @@ pub struct ItemPetData {
 
 #[derive(Debug, MooplePacket)]
 pub struct ItemStackData {
-    info: ItemInfo,
-    quantity: u16, /* nNumber */
-    owner: String,
-    flag: ItemFlags,
+    pub info: ItemInfo,
+    pub quantity: u16, /* nNumber */
+    pub title: String,
+    pub flag: ItemFlags,
     #[pkt(if(field = "info", cond = "ItemInfo::is_rechargable"))]
-    serial_number: CondOption<u64>/* liSN */
+    pub serial_number: CondOption<u64>/* liSN */
 }
 
 #[derive(Debug)]
@@ -178,21 +192,39 @@ pub struct ItemLevelInfo {
 #[derive(Debug, MooplePacket)]
 pub struct EquipItemInfo {
     pub info: ItemInfo,
-    pub stats: EquipStats,
-    pub level_info: OptionalLevelInfo,
-    pub time_stamp: MapleTime,
-    pub unknown1: u32, // nPrevBonusExpRate ?
+    pub stats: EquipAllStats,
+
+    pub lvl_up_ty: u8,
+    pub lvl: u8,
+    pub exp: u32,
+    pub durability: i32,
+    pub hammer_count: u32,
+    pub grade: u8,
+    pub stars: u8,
+    pub options: [u16; 3],
+    pub sockets: [u16; 2],
+
+    pub sn: u64,
+
     /*
       if ((*(uint *)&this->field_0x18 | *(uint *)&this->field_0x1c) == 0) {
     COutPacket::EncodeBuffer(param_1,&this->liSN,8);
   } */
+
+
+  pub time_stamp: MapleTime, // ftEquipped
+  pub prev_bonus_exp_rate: i32, // nPrevBonusExpRate ?
+
+
 }
 
 maple_packet_enum!(
     Item,
     u8,
     Equip(EquipItemInfo) => 1,
-    Item(ItemStackData) => 2,
+    Stack(ItemStackData) => 2,
     Pet(ItemPetData) => 3,
     Equipped(()) => 255
 );
+
+

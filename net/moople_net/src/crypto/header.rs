@@ -2,12 +2,9 @@ use moople_packet::NetError;
 
 use crate::NetResult;
 
-use super::{PacketHeader, RoundKey, PACKET_HEADER_LEN};
+use super::{PacketHeader, RoundKey, PACKET_HEADER_LEN, MapleVersion};
 
 
-pub const fn invert_version(ver: u16) -> u16 {
-    (-((ver + 1) as i16)) as u16
-}
 
 
 /// Small helper to work with high low words in a 32 bit integer
@@ -21,13 +18,13 @@ impl HiLo32 {
         Self { high, low }
     }
 
-    fn from_le_bytes(b: [u8; 4]) -> Self {
+    fn from_le_bytes(b: [u8; PACKET_HEADER_LEN]) -> Self {
         let low = u16::from_le_bytes([b[0], b[1]]);
         let high = u16::from_le_bytes([b[2], b[3]]);
         Self { high, low }
     }
 
-    fn to_le_bytes(&self) -> [u8; 4] {
+    fn to_le_bytes(&self) -> [u8; PACKET_HEADER_LEN] {
         let mut result = [0; PACKET_HEADER_LEN];
         result[0..2].copy_from_slice(&self.low.to_le_bytes());
         result[2..4].copy_from_slice(&self.high.to_le_bytes());
@@ -38,13 +35,13 @@ impl HiLo32 {
 pub fn decode_header(
     hdr: PacketHeader,
     key: RoundKey,
-    version: u16,
+    version: MapleVersion,
 ) -> NetResult<u16> {
     let key = key.0;
     let v = HiLo32::from_le_bytes(hdr);
     let key_high = u16::from_le_bytes([key[2], key[3]]);
     let len = v.low ^ v.high;
-    let hdr_key = v.low ^ version;
+    let hdr_key = v.low ^ version.0;
 
     if hdr_key != key_high {
         return Err(NetError::InvalidHeader{
@@ -57,10 +54,10 @@ pub fn decode_header(
     Ok(len)
 }
 
-pub fn encode_header(key: RoundKey, length: u16, version: u16) -> PacketHeader {
+pub fn encode_header(key: RoundKey, length: u16, version: MapleVersion) -> PacketHeader {
     let key = key.0;
     let key_high = u16::from_le_bytes([key[2], key[3]]);
-    let low = key_high ^ version;
+    let low = key_high ^ version.0;
     let hilo = HiLo32::from_low_high(low ^ length, low);
     hilo.to_le_bytes()
 }
@@ -68,18 +65,18 @@ pub fn encode_header(key: RoundKey, length: u16, version: u16) -> PacketHeader {
 #[cfg(test)]
 mod tests {
     use crate::crypto::{
-        header::{decode_header, encode_header, invert_version},
-        PacketHeader, RoundKey,
+        header::{decode_header, encode_header},
+        PacketHeader, RoundKey, MapleVersion,
     };
 
-    const V65: u16 = invert_version(65);
-    const V83: u16 = invert_version(83);
+    const V65: MapleVersion = MapleVersion(65);
+    const V83: MapleVersion = MapleVersion(83);
 
-    fn enc(key: RoundKey, len: u16, v: u16) -> PacketHeader {
+    fn enc(key: RoundKey, len: u16, v: MapleVersion) -> PacketHeader {
         encode_header(key, len, v)
     }
 
-    fn dec(key: RoundKey, hdr: PacketHeader, v: u16) -> u16 {
+    fn dec(key: RoundKey, hdr: PacketHeader, v: MapleVersion) -> u16 {
         decode_header(hdr, key, v).unwrap()
     }
 
@@ -89,13 +86,14 @@ mod tests {
     #[test]
     fn header_enc_dec() {
         let tests = [
-            (44, [198, 23, 234, 23], KEY, V65),
-            (24, [212, 166, 204, 166], KEY2, V83),
+            (44, [198, 23, 234, 23], KEY, V65.invert()),
+            (2, [0x29, 0xd2, 0x2b, 0xd2], RoundKey([70, 114, 122, 210]), V83),
+            (24, [212, 166, 204, 166], KEY2, V83.invert()),
             (
                 627,
                 [200, 140, 187, 142],
                 KEY2.update(),
-                V83,
+                V83.invert(),
             ),
         ];
 
@@ -103,13 +101,5 @@ mod tests {
             assert_eq!(enc(key, ln, v), ex);
             assert_eq!(dec(key, ex, v), ln)
         }
-    }
-
-    #[test]
-    fn client_hdr_test() {
-        let ex_hdr = [0x29, 0xd2, 0x2b, 0xd2];
-        let iv_enc = RoundKey([70, 114, 122, 210]);
-        let ln = dec(iv_enc, ex_hdr, 83);
-        assert_eq!(ln, 2);
     }
 }

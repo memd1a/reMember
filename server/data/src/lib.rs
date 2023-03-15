@@ -1,13 +1,14 @@
+pub mod services;
 pub mod proto_mapper;
+pub mod util;
+pub mod entities;
+
 use chrono::{NaiveDateTime, Utc};
 use entities::{account, ban, character, equip_item, pet_item, item_stack, inventory_slot};
 use sea_orm::{
     ActiveValue, ConnectOptions, ConnectionTrait, Database, DatabaseConnection,
     DbBackend, DbErr, Schema,
 };
-
-pub mod entities;
-
 pub const SQL_OPT_MEMORY: &str = "sqlite::memory:";
 pub const SQL_OPT_TEST_FILE: &str = "sqlite://test.db?mode=rwc";
 

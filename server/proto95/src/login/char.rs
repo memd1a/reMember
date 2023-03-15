@@ -12,10 +12,13 @@ use crate::{
     },
     recv_opcodes::RecvOpcodes,
     send_opcodes::SendOpcodes,
-    shared::{Gender, char::{CharStat, AvatarData}, ServerAddr},
+    shared::{
+        char::{AvatarData, CharStat},
+        Gender, ServerSocketAddr,
+    },
 };
 
-use super::{account::AccountId, world::WorldId, StartModeInfo, LoginOpt, HardwareInfo};
+use super::{account::AccountId, world::WorldId, HardwareInfo, LoginOpt, StartModeInfo};
 
 type CharacterId = u32;
 
@@ -27,8 +30,7 @@ packet_opcode!(ViewAllCharFlagSet, RecvOpcodes::VACFlagSet);
 
 #[derive(MooplePacket, Debug)]
 pub struct MigrateStageInfo {
-    pub addr: ServerAddr,
-    pub port: u16,
+    pub socket_addr: ServerSocketAddr,
     pub char_id: CharacterId,
     pub premium: bool,
     pub premium_arg: u32,
@@ -212,8 +214,6 @@ pub struct CharacterRankData {
     job_rank: u32,
     job_rank_gap: u32,
 }
-
-
 
 #[derive(MooplePacket, Debug)]
 pub struct ViewExtraInfo {

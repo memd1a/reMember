@@ -1,8 +1,8 @@
 pub mod char;
 use moople_packet::proto::time::MapleTime;
-use proto95::{shared::Gender, login::account::{LoginAccountInfo, LoginAccountExtraInfo}};
+use proto95::{login::account::AccountInfo, shared::Gender};
 
-use crate::entities::{sea_orm_active_enums::GenderTy, account};
+use crate::entities::{account, sea_orm_active_enums::GenderTy};
 
 impl From<&GenderTy> for Gender {
     fn from(value: &GenderTy) -> Self {
@@ -22,19 +22,10 @@ impl From<Gender> for GenderTy {
     }
 }
 
-
-impl From<&account::Model> for LoginAccountInfo {
+impl From<&account::Model> for AccountInfo {
     fn from(model: &account::Model) -> Self {
         let gm = model.gm_level as u8;
-        //TODO: pin and such could come from another source so this from needs more data
-        let extra_info = model.gender.is_some().then_some(LoginAccountExtraInfo {
-            skip_pin: false,
-            login_opt: proto95::login::LoginOpt::EnableSecondPassword,
-            client_key: [0; 8]
-        }).into();
-    
-    
-        LoginAccountInfo {
+        AccountInfo {
             id: model.id as u32,
             gender: model.gender.as_ref().into(),
             grade_code: gm,
@@ -47,7 +38,6 @@ impl From<&account::Model> for LoginAccountInfo {
             chat_block_date: MapleTime::zero(),
             registration_date: MapleTime::try_from(model.created_at).unwrap(),
             num_chars: 3,
-            extra_info
         }
     }
 }

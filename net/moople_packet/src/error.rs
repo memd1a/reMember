@@ -41,6 +41,8 @@ pub enum NetError {
     InvalidTimestamp(i64),
     #[error("Invalid opcode: {0:X}")]
     InvalidOpcode(u16),
+    #[error("Migrated")]
+    Migrated
 }
 
 impl NetError {

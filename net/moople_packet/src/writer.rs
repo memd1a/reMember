@@ -2,6 +2,12 @@ use bytes::{BufMut, BytesMut};
 
 use crate::{opcode::NetOpcode, MaplePacket};
 
+fn maple128_to_bytes(v: u128) -> [u8; 16] { 
+    let mut raw_flags: [u32; 4] = bytemuck::cast(v.to_le_bytes());
+    raw_flags.reverse();
+    bytemuck::cast(raw_flags)
+}
+
 #[derive(Debug)]
 pub struct MaplePacketWriter<T = BytesMut> {
     pub buf: T,
@@ -76,7 +82,7 @@ where
     }
 
     pub fn write_i128(&mut self, v: i128) {
-        self.buf.put_i128_le(v);
+        self.write_u128(v as u128);
     }
 
     pub fn write_f32(&mut self, v: f32) {
@@ -100,7 +106,7 @@ where
     }
 
     pub fn write_u128(&mut self, v: u128) {
-        self.buf.put_u128_le(v);
+        self.write_array::<16>(&maple128_to_bytes(v));
     }
 
     pub fn write_bytes(&mut self, v: &[u8]) {

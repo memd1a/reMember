@@ -2,7 +2,7 @@ use sea_orm_migration::prelude::*;
 
 use crate::helper::moople_ty::char_stat;
 
-pub const CHAR_STATS: [&str; 25] = [
+pub const CHAR_STATS: [&str; 26] = [
     "level",
     "exp",
     "gacha_exp",
@@ -28,6 +28,7 @@ pub const CHAR_STATS: [&str; 25] = [
     "face",
     "skin",
     "hair",
+    "spawn_point"
 ];
 
 pub fn with_char_stats(columns: impl IntoIterator<Item = ColumnDef>) -> Vec<ColumnDef> {

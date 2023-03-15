@@ -1,6 +1,7 @@
 use crate::{codec::handshake::Handshake, crypto::RoundKey};
 
 pub mod handler;
+pub mod ping_pong;
 pub mod resp;
 pub mod session_svc;
 

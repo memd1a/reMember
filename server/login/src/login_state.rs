@@ -65,6 +65,12 @@ impl LoginState {
         );
     }
 
+    pub fn claim_account(&mut self) -> anyhow::Result<account::Model> {
+        self.stage = LoginStage::Unauthorized;
+        Ok(self.account.take().unwrap())
+
+    }
+
     pub fn get_pin(&self) -> anyhow::Result<&account::Model> {
         self.check_stage(LoginStage::Pin)?;
         self.get_account()

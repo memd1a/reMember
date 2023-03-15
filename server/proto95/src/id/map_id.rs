@@ -2,7 +2,7 @@ use std::ops::RangeInclusive;
 use moople_packet::proto::wrapped::MapleWrapped;
 
 
-#[derive(Debug, PartialEq, Eq, PartialOrd, Clone, Copy, Default)]
+#[derive(Debug, PartialEq, Eq, PartialOrd, Clone, Copy, Default, Hash)]
 pub struct MapId(pub u32);
 
 impl MapleWrapped for MapId {

@@ -1,6 +1,6 @@
 pub mod ig_cipher;
 use cipher::{generic_array::GenericArray, typenum::U16};
-use rand::{thread_rng, CryptoRng, Rng};
+use rand::{CryptoRng, Rng};
 
 use crate::NetResult;
 
@@ -17,6 +17,16 @@ pub const AES_BLOCK_LEN: usize = 16;
 
 pub const PACKET_HEADER_LEN: usize = 4;
 pub type PacketHeader = [u8; PACKET_HEADER_LEN];
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct MapleVersion(pub u16);
+
+impl MapleVersion {
+    pub const fn invert(&self) -> Self {
+        Self((-((self.0 + 1) as i16)) as u16)
+    }
+}
+
 
 #[derive(Debug, Copy, Clone, PartialEq, PartialOrd, Eq)]
 pub struct RoundKey(pub [u8; ROUND_KEY_LEN]);
@@ -76,41 +86,37 @@ impl RoundKey {
     }
 }
 
-
-
 pub struct MapleCrypto {
     maple_aes_cipher: MapleAESCipher,
     round_key: RoundKey,
-}
-
-impl Default for MapleCrypto {
-    fn default() -> Self {
-        Self::from_round_key(RoundKey::get_random(thread_rng()))
-    }
+    version: MapleVersion,
 }
 
 impl MapleCrypto {
-    pub fn new(key: [u8; AES_KEY_LEN], round_key: RoundKey) -> Self {
+    pub fn new(key: [u8; AES_KEY_LEN], round_key: RoundKey, version: MapleVersion) -> Self {
         Self {
             maple_aes_cipher: MapleAESCipher::new(&key).unwrap(),
             round_key,
+            version,
         }
     }
 
-    pub fn from_round_key(round_key: RoundKey) -> Self {
-        Self::new(key::MAPLE_AES_KEY, round_key)
+    pub fn from_round_key(round_key: RoundKey, version: MapleVersion) -> Self {
+        Self::new(key::MAPLE_AES_KEY, round_key, version)
     }
 
     fn update_round_key(&mut self) {
         self.round_key = self.round_key.update();
     }
 
-    pub fn encode_header(&self, length: u16, version: u16) -> PacketHeader {
-        header::encode_header(self.round_key, length, version)
+    /// Decodes and verifies a header from the given bytes
+    pub fn encode_header(&self, length: u16) -> PacketHeader {
+        header::encode_header(self.round_key, length, self.version)
     }
 
-    pub fn decode_header(&self, hdr: PacketHeader, version: u16) -> NetResult<u16> {
-        header::decode_header(hdr, self.round_key, version)
+    /// Decodes and verifies a header from the given bytes
+    pub fn decode_header(&self, hdr: PacketHeader) -> NetResult<u16> {
+        header::decode_header(hdr, self.round_key, self.version)
     }
 
     /// Decrypt a chunk of data
@@ -134,6 +140,9 @@ impl MapleCrypto {
 mod tests {
     use crate::crypto::{MapleCrypto, RoundKey};
 
+    use super::MapleVersion;
+    const V: MapleVersion = MapleVersion(95);
+
     #[test]
     fn morph_sequence() {
         let key = RoundKey([1, 2, 3, 4]);
@@ -144,8 +153,8 @@ mod tests {
     fn en_dec() {
         let key = RoundKey([1, 2, 3, 4]);
 
-        let mut enc = MapleCrypto::from_round_key(key);
-        let mut dec = MapleCrypto::from_round_key(key);
+        let mut enc = MapleCrypto::from_round_key(key, V);
+        let mut dec = MapleCrypto::from_round_key(key, V);
         let data = b"abcdef";
 
         let mut data_enc = *data;
@@ -159,8 +168,8 @@ mod tests {
     #[test]
     fn en_dec_100() {
         let key = RoundKey([1, 2, 3, 4]);
-        let mut enc = MapleCrypto::from_round_key(key);
-        let mut dec = MapleCrypto::from_round_key(key);
+        let mut enc = MapleCrypto::from_round_key(key, V);
+        let mut dec = MapleCrypto::from_round_key(key, V);
         let data = b"abcdef".to_vec();
 
         for _ in 0..100 {

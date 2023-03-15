@@ -6,25 +6,35 @@ use std::{net::IpAddr, time::Duration};
 use async_trait::async_trait;
 use config::LoginConfig;
 use data::entities::character;
+use data::services::session::session_data::MoopleSessionData;
+use data::services::session::MoopleMigrationKey;
+use data::services::{
+    self,
+    account::AccountServiceError,
+    character::{CharacterCreateDTO, ItemStarterSet},
+    session::ClientKey,
+};
 use login_state::LoginState;
 use moople_net::{
     maple_router_handler,
     service::{
-        handler::{MapleServerSessionHandler, MapleSessionHandler},
-        resp::ResponsePacket,
+        handler::{MapleServerSessionHandler, MapleSessionHandler, SessionError},
+        resp::{MigrateResponse, PacketOpcodeExt, ResponsePacket},
     },
     MapleSession,
 };
 use moople_packet::{
     proto::{list::MapleIndexList8, time::MapleTime, MapleList8},
-    MaplePacket, MaplePacketReader, MaplePacketWriter,
+    HasOpcode, MaplePacket, MaplePacketReader, MaplePacketWriter,
 };
+use proto95::shared::ExceptionLogReq;
 use proto95::{
     id::{FaceId, HairId, ItemId, Skin},
     login::{
         account::{
-            BlockedIp, CheckPasswordReq, CheckPasswordResp, ConfirmEULAReq, ConfirmEULAResp,
-            LoginAccountInfo, SetGenderReq, SetGenderResp, SuccessResult,
+            AccountInfo, BlockedIp, CheckPasswordReq, CheckPasswordResp, ConfirmEULAReq,
+            ConfirmEULAResp, LoginAccountData, LoginInfo, SetGenderReq, SetGenderResp,
+            SuccessResult,
         },
         char::{
             CharRankInfo, CheckDuplicateIDReq, CheckDuplicateIDResp, CheckDuplicateIDResult,
@@ -39,17 +49,17 @@ use proto95::{
         },
         CreateSecurityHandleReq, LoginOpt, LoginResultHeader,
     },
+    recv_opcodes::RecvOpcodes,
     send_opcodes::SendOpcodes,
     shared::{
         char::{AvatarData, CharStat, PetIds},
-        ServerAddr, UpdateScreenSettingReq,
+        UpdateScreenSettingReq,
     },
 };
-use services::{
-    account::AccountServiceError,
-    character::{CharacterCreateDTO, ItemStarterSet}, migration::IpIdKey, MigrationSessionContext,
-};
 use tokio::net::TcpStream;
+
+//TODO right now if gender is not set and is updated via SetGenderReq the client key will not be set
+// As SetGenderResp(AccountInfoResp) does not set the client key
 
 use crate::login_state::LoginStage;
 
@@ -61,6 +71,7 @@ pub struct LoginHandler {
     state: LoginState,
     cfg: &'static LoginConfig,
     addr: IpAddr,
+    client_key: Option<ClientKey>,
 }
 
 impl LoginHandler {
@@ -74,6 +85,7 @@ impl LoginHandler {
             state: LoginState::default(),
             cfg,
             addr,
+            client_key: None,
         }
     }
 }
@@ -87,12 +99,12 @@ impl MapleSessionHandler for LoginHandler {
         &mut self,
         packet: MaplePacket,
         session: &mut moople_net::MapleSession<Self::Transport>,
-    ) -> Result<(), Self::Error> {
+    ) -> Result<(), SessionError<Self::Error>> {
         maple_router_handler!(
             handler,
             LoginHandler,
             MapleSession<TcpStream>,
-            anyhow::Error,
+            SessionError<anyhow::Error>,
             LoginHandler::handle_default,
             CreateSecurityHandleReq => LoginHandler::handle_create_security_handle,
             UpdateScreenSettingReq => LoginHandler::handle_update_screen_setting,
@@ -109,7 +121,8 @@ impl MapleSessionHandler for LoginHandler {
             CheckDuplicateIDReq => LoginHandler::handle_check_duplicate_id,
             CreateCharReq => LoginHandler::handle_create_char,
             DeleteCharReq => LoginHandler::handle_delete_character,
-            SelectCharReq => LoginHandler::handle_select_char
+            SelectCharReq => LoginHandler::handle_select_char,
+            ExceptionLogReq => LoginHandler::handle_exception_log
         );
 
         handler(self, session, packet.into_reader()).await?;
@@ -131,8 +144,20 @@ impl MapleServerSessionHandler for LoginHandler {
 }
 
 impl LoginHandler {
-    pub async fn handle_default(&mut self, pr: MaplePacketReader<'_>) -> anyhow::Result<()> {
+    pub async fn handle_default(
+        &mut self,
+        _op: RecvOpcodes,
+        pr: MaplePacketReader<'_>,
+    ) -> anyhow::Result<()> {
         log::info!("Unhandled packet: {:?}", pr.into_inner());
+        Ok(())
+    }
+
+    async fn handle_exception_log(
+        &mut self,
+        _req: ExceptionLogReq,
+    ) -> anyhow::Result<()> {
+        dbg!(&_req);
         Ok(())
     }
 
@@ -140,6 +165,7 @@ impl LoginHandler {
         &mut self,
         _req: CreateSecurityHandleReq,
     ) -> anyhow::Result<()> {
+        dbg!(&_req);
         Ok(())
     }
 
@@ -288,7 +314,20 @@ impl LoginHandler {
                 ban_time: MapleTime::maple_default(),
             }),
             Ok(acc) => {
-                let acc_info: LoginAccountInfo = (&acc).into();
+                let account_info: AccountInfo = (&acc).into();
+
+                //TODO generate an actualy client key
+                self.client_key = Some((account_info.id as u64).to_le_bytes());
+                let login_info = acc
+                    .gender
+                    .is_some()
+                    .then_some(LoginInfo {
+                        skip_pin: false,
+                        login_opt: proto95::login::LoginOpt::EnableSecondPassword,
+                        client_key: self.client_key.unwrap(),
+                    })
+                    .into();
+                dbg!(&login_info);
 
                 log::info!("Logged into acc(#{}): {}", acc.id, acc.username);
                 self.state.transition_login_with_acc(acc)?;
@@ -296,11 +335,14 @@ impl LoginHandler {
                     LoginStage::AcceptTOS => CheckPasswordResp::TOS(hdr),
                     _ => CheckPasswordResp::Success(SuccessResult {
                         hdr,
-                        account: acc_info,
+                        account: LoginAccountData {
+                            account_info,
+                            login_info,
+                        },
                     }),
                 }
             }
-            _ => unreachable!(),
+            _ => unreachable!("{:?}", login_result),
         };
 
         Ok(res.into())
@@ -325,7 +367,6 @@ impl LoginHandler {
         self.state
             .transition_char_select(req.world_id as WorldId, req.channel_id as ChannelId)?;
 
-        //TODO: this is on select world result
         Ok(SelectWorldResp::Success(char_list).into())
     }
 
@@ -377,6 +418,7 @@ impl LoginHandler {
                     starter_set,
                     gender: req.gender,
                 },
+                &self.services.item,
             )
             .await?;
 
@@ -405,48 +447,45 @@ impl LoginHandler {
         .into())
     }
 
-    async fn handle_select_char(&mut self, req: SelectCharReq) -> LoginResult<SelectCharResp> {
-        let (acc, world, channel) = self.state.get_char_select()?;
-        let addr = self.services.server_info.get_channel_addr(world, channel)?;
-        let server_addr = match addr.ip() {
-            std::net::IpAddr::V4(v4) => ServerAddr(v4),
-            _ => anyhow::bail!("Ipv6 not supported"),
-        };
+    async fn handle_select_char(
+        &mut self,
+        req: SelectCharReq,
+    ) -> anyhow::Result<MigrateResponse<ResponsePacket<SendOpcodes, SelectCharResp>>> {
+        let (_, world, channel) = self.state.get_char_select()?;
 
+        let acc = self.state.claim_account()?;
+        let char_id = req.char_id as i32;
+        // TODO(IMPORTANT), get the character from the account don't allow ANY char here
+        let char = self.services.character.must_get(req.char_id as i32).await?;
+
+        let inv = self
+            .services
+            .item
+            .load_inventory_for_character(char_id)
+            .await?;
+
+        dbg!(MoopleMigrationKey::new(self.client_key.unwrap(), self.addr));
+
+        self.services.session_manager.create_migration_session(
+            MoopleMigrationKey::new(self.client_key.unwrap(), self.addr),
+            MoopleSessionData { acc, char, inv },
+        )?;
+
+        let addr = self.services.server_info.get_channel_addr(world, channel)?;
         let migrate = MigrateStageInfo {
-            addr: server_addr,
-            port: addr.port(),
+            socket_addr: addr.try_into()?,
             char_id: req.char_id,
             premium: false,
             premium_arg: 0,
         };
 
-        
-        let key = IpIdKey {
-            ip: self.addr,
-            id: req.char_id,
-        };
-        dbg!(&key);
-        self.services.migration.push(
-            key,
-            MigrationSessionContext {
-                client_ip: self.addr,
-                acc_id: acc.id as u32,
-                char_id: req.char_id,
-            },
-        );
-
-        self.state.reset_login();
-
-        //TODO: transition back to unauth state
-        // TODO!! ALSO very important use an account lock and transfer owner ship, to forbid multiple sessions
-        // for one account
-
-        Ok(SelectCharResp {
+        let pkt: ResponsePacket<_, _> = SelectCharResp {
             error_code: 0,
             result: SelectCharResult::Success(migrate),
         }
-        .into())
+        .into_response(SelectCharResp::OPCODE);
+
+        Ok(MigrateResponse(pkt))
     }
 }
 

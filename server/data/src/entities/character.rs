@@ -37,6 +37,7 @@ pub struct Model {
     pub face: i32,
     pub skin: i32,
     pub hair: i32,
+    pub spawn_point: i32,
     pub acc_id: i32,
 }
 

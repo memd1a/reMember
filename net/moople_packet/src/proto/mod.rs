@@ -1,3 +1,4 @@
+pub mod geo;
 pub mod bits;
 pub mod conditional;
 pub mod constant;
@@ -46,6 +47,16 @@ pub trait DecodePacket<'de>: Sized {
     fn decode_from_data(data: &'de [u8]) -> NetResult<Self> {
         let mut r = MaplePacketReader::new(data);
         Self::decode_packet(&mut r)
+    }
+
+    fn decode_from_data_complete(data: &'de [u8]) -> anyhow::Result<Self> {
+        let mut r = MaplePacketReader::new(data);
+        let res = Self::decode_packet(&mut r)?;
+        if !r.remaining_slice().is_empty() {
+            anyhow::bail!("Still remaining data: {:?}", r.remaining_slice());
+        }
+        Ok(res)
+        
     }
 }
 

@@ -2,11 +2,13 @@ use std::{io, net::SocketAddr};
 
 use crate::codec::{
     handshake::Handshake,
-    maple_codec::{MapleCodec, MapleFramedCodec},
+    maple_codec::{MapleCodec, MapleFramedCodec, EncodeItem},
 };
-use bytes::BytesMut;
+use bytes::BufMut;
 use futures::{SinkExt, StreamExt};
-use moople_packet::{opcode::NetOpcode, EncodePacket, MaplePacket, MaplePacketWriter, NetResult};
+use moople_packet::{
+    opcode::NetOpcode, EncodePacket, HasOpcode, MaplePacket, MaplePacketWriter, NetResult,
+};
 use tokio::{
     io::{AsyncRead, AsyncWrite, AsyncWriteExt},
     net::TcpStream,
@@ -18,9 +20,6 @@ impl<T> SessionTransport for T where T: AsyncWrite + AsyncRead {}
 
 pub struct MapleSession<T> {
     pub codec: MapleFramedCodec<T>,
-    //TODO use the codec write buffer later
-    //TODO: how to handle panic/unwind if buffer capacity is too low
-    encode_buf: BytesMut,
 }
 
 impl<T> MapleSession<T>
@@ -28,10 +27,7 @@ where
     T: SessionTransport + Unpin,
 {
     pub fn new(codec: MapleFramedCodec<T>) -> Self {
-        Self {
-            codec,
-            encode_buf: BytesMut::with_capacity(4096),
-        }
+        Self { codec }
     }
 
     pub async fn initialize_server_session(mut io: T, handshake: &Handshake) -> NetResult<Self> {
@@ -65,23 +61,45 @@ where
         }
     }
 
-    pub async fn send_packet(&mut self, pkt: MaplePacket) -> NetResult<()> {
-        self.codec.send(pkt).await?;
+    pub async fn send_raw_packet(&mut self, pkt: MaplePacket) -> NetResult<()> {
+        let buf = self.codec.write_buffer_mut();
+        let n = buf.len();
+        // Make space for the header
+        buf.put_i32(0);
+        buf.put_slice(&pkt.data);
+
+        // Determine encoded size
+        let n = buf.len() - n;
+
+        self.codec.send(EncodeItem(n)).await?;
         Ok(())
     }
 
-    pub async fn encode_packet<P: EncodePacket>(
+    pub async fn send_packet_with_opcode<P: EncodePacket>(
         &mut self,
         opcode: impl NetOpcode,
         data: P,
     ) -> NetResult<()> {
-        self.encode_buf.clear();
-        let mut pw = MaplePacketWriter::new(self.encode_buf.clone());
+        let mut buf = self.codec.write_buffer_mut();
+        // Make space for the header
+        let n = buf.len();
+        buf.put_i32(0);
+        let mut pw = MaplePacketWriter::new(&mut buf);
         pw.write_opcode(opcode);
         data.encode_packet(&mut pw)?;
 
-        self.send_packet(MaplePacket::from_writer(pw)).await?;
+        // Determine encoded size
+        let n = buf.len() - n;
+
+        self.codec.send(EncodeItem(n)).await?;
         Ok(())
+    }
+
+    pub async fn send_packet<P: EncodePacket + HasOpcode>(
+        &mut self,
+        data: P,
+    ) -> NetResult<()> {
+        self.send_packet_with_opcode(P::OPCODE, data).await
     }
 
     pub async fn shutdown(&mut self) -> NetResult<()> {
@@ -95,6 +113,11 @@ where
 
     pub fn get_mut(&mut self) -> &mut T {
         self.codec.get_mut()
+    }
+
+    pub async fn flush(&mut self) -> NetResult<()> {
+        self.get_mut().flush().await?;
+        Ok(())
     }
 }
 
@@ -154,7 +177,7 @@ mod tests {
                 loop {
                     match sess.read_packet().await {
                         Ok(pkt) => {
-                            sess.send_packet(pkt).await?;
+                            sess.send_raw_packet(pkt).await?;
                         }
                         _ => {
                             break;
@@ -170,7 +193,7 @@ mod tests {
             assert_eq!(handshake.version, V);
 
             for data in ECHO_DATA.iter() {
-                sess.send_packet(MaplePacket::from_data(Bytes::from_static(data)))
+                sess.send_raw_packet(MaplePacket::from_data(Bytes::from_static(data)))
                     .await?;
                 let pkt = sess.read_packet().await?;
                 assert_eq!(pkt.data.as_ref(), *data);

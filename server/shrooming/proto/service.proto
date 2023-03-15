@@ -1,0 +1,48 @@
+syntax = "proto3";
+
+option java_multiple_files = true;
+option java_package = "org.reMember.shrooming";
+option java_outer_classname = "ShroomingProto";
+
+package shrooming;
+
+message Empty {
+
+}
+
+// The request message containing the user's name.
+message HelloRequest {
+  string name = 1;
+}
+
+// The response message containing the greetings
+message HelloReply {
+  string message = 1;
+}
+
+message FileRequest {
+  string name = 1;
+}
+
+message FileChunk {
+  int32 chunk_id = 1;
+  bytes data = 2;
+}
+
+message FileEntriesReply {
+  repeated FileEntry entries = 1;
+}
+
+message FileEntry  {
+  string hash = 1;
+  string name = 2;
+}
+
+
+// The greeting service definition.
+service ShroomingLauncher {
+  rpc SayHello (HelloRequest) returns (HelloReply) {}
+  rpc GetFileEntries (Empty) returns (FileEntriesReply) {}
+  rpc GetFile (FileRequest) returns (stream FileChunk) {}
+}
+

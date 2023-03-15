@@ -32,7 +32,7 @@ impl From<&character::Model> for CharStat {
             fame: char.fame as u16,
             tmp_exp: char.gacha_exp as u32,
             map_id: MapId(char.map_id as u32),
-            portal: char.sp as u8, //TODO spawn point
+            portal: char.spawn_point as u8,
             playtime: 0,
             sub_job: 0,
         }

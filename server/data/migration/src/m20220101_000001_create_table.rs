@@ -239,7 +239,7 @@ impl Default for Migration {
 }
 
 impl Migration {
-    fn table_iter<'a>(&'a self) -> impl Iterator<Item = &'a MoopleTbl> {
+    fn table_iter(&self) -> impl Iterator<Item = &'_ MoopleTbl> {
         [
             &self.acc_table,
             &self.char_table,

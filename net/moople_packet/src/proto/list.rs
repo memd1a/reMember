@@ -121,6 +121,14 @@ pub struct MapleIndexListZ<I, T> {
     pub items: Vec<(I, T)>,
 }
 
+impl<I, E> FromIterator<(I, E)> for MapleIndexListZ<I, E> {
+    fn from_iter<T: IntoIterator<Item = (I, E)>>(iter: T) -> Self {
+        Self {
+            items: iter.into_iter().collect()
+        }
+    }
+}
+
 impl<I, T> Default for MapleIndexListZ<I, T> {
     fn default() -> Self {
         Self { items: Vec::new() }
@@ -189,6 +197,7 @@ pub struct MapleList<I, T> {
     pub items: Vec<T>,
     pub _index: PhantomData<I>,
 }
+
 
 impl<I, E> FromIterator<E> for MapleList<I, E> {
     fn from_iter<T: IntoIterator<Item = E>>(iter: T) -> Self {

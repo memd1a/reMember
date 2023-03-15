@@ -1,40 +1,53 @@
-use bytes::{Buf, BufMut};
-use moople_packet::{MaplePacket, NetError};
+use bytes::Buf;
+use moople_packet::{MaplePacket, NetError, NetResult};
 use tokio_util::codec::{Decoder, Encoder, Framed};
 
-use crate::crypto::{header::invert_version, MapleCrypto, PacketHeader, PACKET_HEADER_LEN};
+use crate::crypto::{MapleCrypto, PacketHeader, PACKET_HEADER_LEN, MapleVersion};
 
-use super::handshake::Handshake;
-
-const MAX_PACKET_LEN: usize = (u16::MAX / 2) as usize;
+use super::{handshake::Handshake, MAX_PACKET_LEN};
 
 pub type MapleFramedCodec<T> = Framed<T, MapleCodec>;
 
+// Struct for the encoder which ensures only this crate can actually use it
+// Because the encoding has to be done prior with the raw encode buffer
+// Check `MapleSession::send_packet` for this
+pub struct EncodeItem(pub(crate) usize);
+
 pub struct MapleCodec {
-    send_version: u16,
-    recv_version: u16,
     send_cipher: MapleCrypto,
     recv_cipher: MapleCrypto,
 }
 
 impl MapleCodec {
     pub fn client_from_handshake(handshake: &Handshake) -> Self {
+        let v = MapleVersion(handshake.version);
         Self {
-            send_version: handshake.version,
-            recv_version: invert_version(handshake.version),
-            send_cipher: MapleCrypto::from_round_key(handshake.iv_enc),
-            recv_cipher: MapleCrypto::from_round_key(handshake.iv_dec),
+            send_cipher: MapleCrypto::from_round_key(handshake.iv_enc, v),
+            recv_cipher: MapleCrypto::from_round_key(
+                handshake.iv_dec,
+                v.invert(),
+            ),
         }
     }
 
     pub fn server_from_handshake(handshake: &Handshake) -> Self {
+        let v = MapleVersion(handshake.version);
         Self {
-            send_version: invert_version(handshake.version),
-            recv_version: handshake.version,
-            send_cipher: MapleCrypto::from_round_key(handshake.iv_dec),
-            recv_cipher: MapleCrypto::from_round_key(handshake.iv_enc),
+            send_cipher: MapleCrypto::from_round_key(
+                handshake.iv_dec,
+                v.invert(),
+            ),
+            recv_cipher: MapleCrypto::from_round_key(handshake.iv_enc, v),
         }
     }
+}
+
+fn check_packet_len(len: usize) -> NetResult<()> {
+    if len > MAX_PACKET_LEN {
+        return Err(NetError::FrameSize(len));
+    }
+
+    Ok(())
 }
 
 impl Decoder for MapleCodec {
@@ -42,21 +55,16 @@ impl Decoder for MapleCodec {
     type Error = NetError;
 
     fn decode(&mut self, src: &mut bytes::BytesMut) -> Result<Option<Self::Item>, Self::Error> {
-        //Read Header
         if src.len() < PACKET_HEADER_LEN {
             return Ok(None);
         }
+        let hdr: PacketHeader = src[..PACKET_HEADER_LEN].try_into().unwrap();
+        let length = self.recv_cipher.decode_header(hdr)? as usize;
 
-        //Decode length
-        let hdr_bytes: PacketHeader = src[..PACKET_HEADER_LEN].try_into().unwrap();
-        let length = self
-            .recv_cipher
-            .decode_header(hdr_bytes, self.recv_version)? as usize;
+        // Verify the packet is not great than the maximum limit
+        check_packet_len(length)?;
 
-        if length > MAX_PACKET_LEN {
-            return Err(NetError::FrameSize(length));
-        }
-
+        // Try to read the actual payload
         let total_len = PACKET_HEADER_LEN + length;
 
         //Read data
@@ -69,26 +77,20 @@ impl Decoder for MapleCodec {
         let mut packet_data = src.split_to(length);
         self.recv_cipher.decrypt(packet_data.as_mut());
         let pkt = MaplePacket::from_data(packet_data.freeze());
+        
         Ok(Some(pkt))
     }
 }
 
-impl Encoder<MaplePacket> for MapleCodec {
+impl Encoder<EncodeItem> for MapleCodec {
     type Error = NetError;
 
-    fn encode(&mut self, item: MaplePacket, dst: &mut bytes::BytesMut) -> Result<(), Self::Error> {
-        let data = item.data;
-        let length = data.len();
-        if length > MAX_PACKET_LEN {
-            return Err(NetError::FrameSize(length));
-        }
+    fn encode(&mut self, item: EncodeItem, dst: &mut bytes::BytesMut) -> Result<(), Self::Error> {
+        let length = item.0 - PACKET_HEADER_LEN;
+        check_packet_len(length)?;
 
-        let hdr = self
-            .send_cipher
-            .encode_header(length as u16, self.send_version);
-        dst.reserve(PACKET_HEADER_LEN + length);
-        dst.put_slice(&hdr);
-        dst.put_slice(&data);
+        let hdr = self.send_cipher.encode_header(length as u16);
+        dst[..PACKET_HEADER_LEN].copy_from_slice(hdr.as_slice());
         self.send_cipher.encrypt(&mut dst[PACKET_HEADER_LEN..]);
         Ok(())
     }

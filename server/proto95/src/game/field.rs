@@ -12,7 +12,7 @@ use moople_packet::{
 use crate::{
     id::MapId,
     send_opcodes::SendOpcodes,
-    shared::{char::{CharacterId, CharDataAll, CharDataFlags, CharDataFlagsAll, CharDataHeader}, TagPoint},
+    shared::{char::{CharacterId, CharDataAll, CharDataFlagsAll, CharDataHeader}, TagPoint},
 };
 
 #[derive(MooplePacket, Debug)]
@@ -21,7 +21,7 @@ pub struct ClientOption {
     pub value: u32,
 }
 
-#[derive(MooplePacket, Debug)]
+#[derive(MooplePacket, Debug, Default)]
 pub struct CrcSeed {
     pub s1: u32,
     pub s2: u32,

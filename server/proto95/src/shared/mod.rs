@@ -2,9 +2,11 @@ pub mod char;
 pub mod inventory;
 pub mod item;
 pub mod job;
+pub mod movement;
 
-use std::net::Ipv4Addr;
+use std::net::{Ipv4Addr, SocketAddr};
 
+use geo::Coord;
 use moople_derive::MooplePacket;
 use moople_packet::{
     mark_maple_enum, packet_opcode,
@@ -93,16 +95,15 @@ impl From<OptionGender> for Option<Gender> {
 }
 mark_maple_enum!(OptionGender);
 
-#[derive(Debug, MooplePacket)]
-pub struct Vec2 {
-    x: i16,
-    y: i16,
-}
+pub type Vec2 = Coord<i16>;
+pub type TagPoint = Coord<i32>;
 
-#[derive(MooplePacket, Debug)]
-pub struct TagPoint {
-    x: u32,
-    y: u32,
+pub type FootholdId = u16;
+
+#[derive(Debug, MooplePacket, Copy, Clone)]
+pub struct Range2 {
+    pub low: i16,
+    pub high: i16,
 }
 
 #[derive(Debug, MooplePacket)]
@@ -115,6 +116,26 @@ pub struct Rect {
 
 #[derive(Debug, Clone)]
 pub struct ServerAddr(pub Ipv4Addr);
+
+#[derive(Debug, Clone, MooplePacket)]
+pub struct ServerSocketAddr {
+    pub addr: ServerAddr,
+    pub port: u16,
+}
+
+impl TryFrom<SocketAddr> for ServerSocketAddr {
+    type Error = anyhow::Error;
+
+    fn try_from(value: SocketAddr) -> Result<Self, Self::Error> {
+        match value {
+            SocketAddr::V4(addr) => Ok(Self {
+                addr: ServerAddr(*addr.ip()),
+                port: addr.port(),
+            }),
+            _ => Err(anyhow::format_err!("Ipv6 not supported")),
+        }
+    }
+}
 
 impl MapleWrapped for ServerAddr {
     type Inner = [u8; 4];

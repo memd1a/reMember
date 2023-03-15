@@ -2,7 +2,13 @@ use std::io::Cursor;
 
 use bytes::Buf;
 
-use crate::{opcode::NetOpcode, NetResult, error::NetError};
+use crate::{error::NetError, opcode::NetOpcode, NetResult};
+
+fn maple128_from_bytes(data: [u8; 16]) -> u128 {
+    let mut data: [u32; 4] = bytemuck::cast(data);
+    data.reverse();
+    u128::from_le_bytes(bytemuck::cast(data))
+}
 
 #[derive(Debug)]
 pub struct MaplePacketReader<'a> {
@@ -14,7 +20,6 @@ impl<'a> MaplePacketReader<'a> {
         // Len + data
         2 + s.len()
     }
-
 
     pub fn new(inner: &'a [u8]) -> Self {
         Self {
@@ -43,7 +48,6 @@ impl<'a> MaplePacketReader<'a> {
         let p = self.inner.position() as usize;
         &self.inner.get_ref()[p..]
     }
-
 
     pub fn sub_reader(&self) -> Self {
         Self::new(self.remaining_slice())
@@ -110,13 +114,11 @@ impl<'a> MaplePacketReader<'a> {
     }
 
     pub fn read_u128(&mut self) -> NetResult<u128> {
-        self.check_size_typed::<u128>(16)?;
-        Ok(self.inner.get_u128_le())
+        Ok(maple128_from_bytes(self.read_array()?))
     }
 
     pub fn read_i128(&mut self) -> NetResult<i128> {
-        self.check_size_typed::<i128>(16)?;
-        Ok(self.inner.get_i128_le())
+        Ok(self.read_u128()? as i128)
     }
 
     pub fn read_f32(&mut self) -> NetResult<f32> {
@@ -160,7 +162,7 @@ impl<'a> MaplePacketReader<'a> {
         self.check_size_typed::<T>(n)?;
         let p = self.inner.position() as usize;
         // Size is already checked here
-        let by = &self.inner.get_ref()[p..p+n];
+        let by = &self.inner.get_ref()[p..p + n];
         self.inner.advance(n);
         Ok(by)
     }

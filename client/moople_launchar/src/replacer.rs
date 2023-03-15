@@ -55,7 +55,7 @@ where
 
     fn patch_block(block: &mut [u8], replacments: &[(Finder, &[u8])]) {
         for (finder, replace) in replacments.iter() {
-            let pos: Vec<_> = finder.find_iter(&block).collect();
+            let pos: Vec<_> = finder.find_iter(block).collect();
             for p in pos {
                 block[p..p + replace.len()].copy_from_slice(replace);
             }

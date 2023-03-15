@@ -3,21 +3,37 @@ use std::{fmt::Debug, time::Duration};
 use async_trait::async_trait;
 use futures::Future;
 use moople_packet::{DecodePacket, MaplePacket, MaplePacketReader, NetError};
+use thiserror::Error;
+use tokio::sync::mpsc;
 
 use crate::{MapleSession, SessionTransport};
 
 use super::resp::{IntoResponse, Response};
 
+pub type BroadcastSender = mpsc::Sender<MaplePacket>;
+
+#[derive(Debug, Error)]
+pub enum SessionError<E> {
+    #[error("Net")]
+    Net(#[from] NetError),
+    #[error("Session")]
+    Session(E),
+}
+
 #[async_trait]
-pub trait MapleSessionHandler {
+pub trait MapleSessionHandler: Sized {
     type Transport: SessionTransport;
-    type Error: From<NetError> + Debug;
+    type Error: Debug;
 
     async fn handle_packet(
         &mut self,
         packet: MaplePacket,
-        session: &mut MapleSession<Self::Transport>,
-    ) -> Result<(), Self::Error>;
+        session: &mut MapleSession<Self::Transport>
+    ) -> Result<(), SessionError<Self::Error>>;
+
+    async fn finish(self, _is_migrating: bool) -> Result<(), SessionError<Self::Error>> {
+        Ok(())
+    }
 }
 
 #[async_trait]
@@ -35,6 +51,7 @@ pub trait MakeServerSessionHandler {
     async fn make_handler(
         &mut self,
         sess: &mut MapleSession<Self::Transport>,
+        broadcast_tx: BroadcastSender
     ) -> Result<Self::Handler, Self::Error>;
 }
 
@@ -47,21 +64,24 @@ pub trait MakeServerSessionHandler {
 // in the session to avoid having 2 mut references, however It'd be quiet a challenge to call self methods
 // on the state, cause you'd still like to have a session to send packets
 
-pub async fn call_handler_fn<'session, F, Req, Fut, Trans, State, Resp>(
+pub async fn call_handler_fn<'session, F, Req, Fut, Trans, State, Resp, Err>(
     state: &'session mut State,
     session: &'session mut MapleSession<Trans>,
     mut pr: MaplePacketReader<'session>,
     mut f: F,
-) -> anyhow::Result<()>
+) -> Result<(), SessionError<Err>>
 where
     Trans: SessionTransport + Send + Unpin,
     F: FnMut(&'session mut State, Req) -> Fut,
-    Fut: Future<Output = anyhow::Result<Resp>>,
+    Fut: Future<Output = Result<Resp, Err>>,
     Req: DecodePacket<'session>,
     Resp: IntoResponse,
 {
     let req = Req::decode_packet(&mut pr)?;
-    let resp = f(state, req).await?.into_response();
+    let resp = f(state, req)
+        .await
+        .map_err(SessionError::Session)?
+        .into_response();
     resp.send(session).await?;
     Ok(())
 }
@@ -75,7 +95,7 @@ macro_rules! maple_router_handler {
                 $(
                     <$req as moople_packet::HasOpcode>::OPCODE  => $crate::service::handler::call_handler_fn(state, session, pr, $handler_fn).await,
                 )*
-                _ =>   $default_handler(state, pr).await
+                _ =>   $default_handler(state, recv_op, pr).await.map_err(<$err>::Session)
             }
         }
     };
@@ -93,7 +113,7 @@ mod tests {
     use crate::{
         codec::{handshake::Handshake, maple_codec::MapleCodec},
         crypto::RoundKey,
-        MapleSession,
+        MapleSession, service::handler::SessionError,
     };
 
     #[derive(Debug, Default)]
@@ -127,7 +147,7 @@ mod tests {
             Ok(())
         }
 
-        async fn handle_default(&mut self, _pr: MaplePacketReader<'_>) -> anyhow::Result<()> {
+        async fn handle_default(&mut self, _op: u16, _pr: MaplePacketReader<'_>) -> anyhow::Result<()> {
             Ok(())
         }
     }
@@ -159,7 +179,7 @@ mod tests {
             handle,
             State,
             MapleSession<io::Cursor<Vec<u8>>>,
-            anyhow::Error,
+            SessionError<anyhow::Error>,
             State::handle_default,
             Req1 => State::handle_req1,
         );

@@ -270,3 +270,39 @@ impl<const N: usize, T: PacketLen> PacketLen for [T; N] {
         self.iter().map(|v| v.packet_len()).sum()
     }
 }
+
+impl<D: EncodePacket> EncodePacket for Vec<D> {
+    fn encode_packet<T: BufMut>(&self, pw: &mut MaplePacketWriter<T>) -> NetResult<()> {
+        for v in self.iter() {
+            v.encode_packet(pw)?;
+        }
+
+        Ok(())
+    }
+}
+
+impl<D: PacketLen> PacketLen for Vec<D> {
+    const SIZE_HINT: Option<usize> = None;
+
+    fn packet_len(&self) -> usize {
+        self.iter().map(|v| v.packet_len()).sum()
+    }
+}
+
+impl<D: EncodePacket> EncodePacket for Option<D> {
+    fn encode_packet<T: BufMut>(&self, pw: &mut MaplePacketWriter<T>) -> NetResult<()> {
+        if let Some(ref v) = self {
+            v.encode_packet(pw)?;
+        }
+
+        Ok(())
+    }
+}
+
+impl<D: PacketLen> PacketLen for Option<D> {
+    const SIZE_HINT: Option<usize> = None;
+
+    fn packet_len(&self) -> usize {
+        self.as_ref().map(|v| v.packet_len()).unwrap_or(0)
+    }
+}

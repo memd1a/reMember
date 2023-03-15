@@ -37,49 +37,6 @@ pub struct BlockedIp {
 
 #[derive(MooplePacket, Debug)]
 pub struct AccountInfo {
-    account_id: u32,
-    gender: OptionGender,
-    grade_code: u8,
-    // note: The sub_trade_code and test_acc are decoded as u16
-    // on the client
-    sub_grade_code: u8,
-    test_acc: bool,
-    country_id: u8,
-    name: String,
-    chat_block_reason: u8,
-    purchase_exp: u8,
-    chat_block_date: MapleTime,
-    registration_date: MapleTime,
-    num_chars: u32,
-    client_key: ClientKey,
-}
-
-#[derive(MooplePacket, Debug)]
-pub struct GuestAccountInfo {
-    account_id: u32,
-    gender: OptionGender,
-    grade_code: u8,
-    sub_grade_code: u8,
-    test_acc: bool,
-    country_id: u8,
-    name: String,
-    purchase_exp: u8,
-    chat_block_reason: u8,
-    chat_block_date: MapleTime,
-    registration_date: MapleTime,
-    num_chars: u32,
-    guest_id_url: String,
-}
-
-#[derive(MooplePacket, Debug)]
-pub struct LoginAccountExtraInfo {
-    pub skip_pin: bool,
-    pub login_opt: LoginOpt,
-    pub client_key: ClientKey,
-}
-
-#[derive(MooplePacket, Debug)]
-pub struct LoginAccountInfo {
     pub id: u32,
     pub gender: OptionGender,
     pub grade_code: u8,
@@ -92,16 +49,52 @@ pub struct LoginAccountInfo {
     pub chat_block_date: MapleTime,
     pub registration_date: MapleTime,
     pub num_chars: u32,
-    #[pkt(if(field = "gender", cond = "OptionGender::is_set"))]
-    pub extra_info: CondOption<LoginAccountExtraInfo>,
 }
+
+impl AccountInfo {
+    pub fn has_login_info(&self) -> bool {
+        self.gender.is_set()
+    }
+}
+
+#[derive(MooplePacket, Debug)]
+pub struct LoginInfo {
+    pub skip_pin: bool,
+    pub login_opt: LoginOpt,
+    pub client_key: ClientKey,
+}
+
+#[derive(MooplePacket, Debug)]
+pub struct LoginAccountData {
+    pub account_info: AccountInfo,
+    #[pkt(if(field = "account_info", cond = "AccountInfo::has_login_info"))]
+    pub login_info: CondOption<LoginInfo>,
+}
+#[derive(MooplePacket, Debug)]
+pub struct GuestAccountInfo {
+    account_id: u32,
+    gender: OptionGender,
+    grade_code: u8,
+    sub_grade_code: u8,
+    is_test_acc: bool,
+    country_id: u8,
+    name: String,
+    purchase_exp: u8,
+    chat_block_reason: u8,
+    chat_block_date: MapleTime,
+    registration_date: MapleTime,
+    num_chars: u32,
+    guest_id_url: String,
+}
+
+
 
 #[derive(MooplePacket, Debug)]
 pub struct SuccessResult {
     //TODO reg has to be either 0/1 for having an acc
     // 2/3 is some yes/no dialog
     pub hdr: LoginResultHeader,
-    pub account: LoginAccountInfo,
+    pub account: LoginAccountData,
 }
 
 maple_packet_enum!(

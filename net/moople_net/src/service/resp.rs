@@ -1,7 +1,7 @@
 use async_trait::async_trait;
 use moople_packet::{
     opcode::{HasOpcode, NetOpcode},
-    EncodePacket, NetResult,
+    EncodePacket, NetError, NetResult,
 };
 
 use crate::{MapleSession, SessionTransport};
@@ -73,7 +73,7 @@ where
         self,
         session: &mut MapleSession<Trans>,
     ) -> NetResult<()> {
-        session.encode_packet(self.op, self.data).await?;
+        session.send_packet_with_opcode(self.op, self.data).await?;
         Ok(())
     }
 }
@@ -92,50 +92,39 @@ pub trait IntoResponse {
     fn into_response(self) -> Self::Resp;
 }
 
-
 impl<T: EncodePacket + HasOpcode> From<T> for ResponsePacket<T::OP, T> {
     fn from(value: T) -> Self {
         ResponsePacket::new(T::OPCODE, value)
     }
 }
 
-impl<Op, T> IntoResponse for ResponsePacket<Op, T>
+pub struct MigrateResponse<T>(pub T);
+
+#[async_trait]
+impl<T> Response for MigrateResponse<T>
 where
-    Op: NetOpcode + Send,
-    T: EncodePacket + Send,
+    T: Response + Send,
 {
-    type Resp = ResponsePacket<Op, T>;
+    async fn send<Trans: SessionTransport + Send + Unpin>(
+        self,
+        session: &mut MapleSession<Trans>,
+    ) -> NetResult<()> {
+        log::info!("Sending migration response");
+        // Send migration packet and signal via an error the session is about to migrate
+        self.0.send(session).await?;
+        log::info!("Returning migration error");
+        return Err(NetError::Migrated);
+    }
+}
+
+impl<T> IntoResponse for T
+where
+    T: Response + Send,
+{
+    type Resp = T;
 
     fn into_response(self) -> Self::Resp {
         self
-    }
-}
-
-impl IntoResponse for () {
-    type Resp = ();
-
-    fn into_response(self) -> Self::Resp {}
-}
-
-impl<Resp> IntoResponse for Option<Resp>
-where
-    Resp: IntoResponse,
-{
-    type Resp = Option<Resp::Resp>;
-
-    fn into_response(self) -> Self::Resp {
-        self.map(|r| r.into_response())
-    }
-}
-
-impl<Resp> IntoResponse for Vec<Resp>
-where
-    Resp: IntoResponse,
-{
-    type Resp = Vec<Resp::Resp>;
-
-    fn into_response(self) -> Self::Resp {
-        self.into_iter().map(|r| r.into_response()).collect()
     }
 }
 

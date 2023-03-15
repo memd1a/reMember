@@ -1,4 +1,4 @@
-use std::fmt::Debug;
+use std::{fmt::Debug, time::Duration};
 
 use chrono::NaiveDateTime;
 
@@ -115,12 +115,70 @@ impl MapleWrapped for Ticks {
         Self(v)
     }
 }
+
+#[derive(Clone, Copy)]
+pub struct DurationMs<T>(pub T);
+
+impl<T: Debug> Debug for DurationMs<T> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{:?}ms", self.0)
+    }
+}
+
+impl<T> MapleWrapped for DurationMs<T>
+where
+    T: Copy,
+{
+    type Inner = T;
+
+    fn maple_into_inner(&self) -> Self::Inner {
+        self.0
+    }
+
+    fn maple_from(v: Self::Inner) -> Self {
+        Self(v)
+    }
+}
+
+impl<T> From<Duration> for DurationMs<T>
+where
+    T: TryFrom<u128>,
+    T::Error: Debug,
+{
+    fn from(value: Duration) -> Self {
+        Self(T::try_from(value.as_millis()).expect("Milli conversion"))
+    }
+}
+
+impl<T> From<DurationMs<T>> for Duration where T: Into<u64> {
+    fn from(value: DurationMs<T>) -> Self {
+        Duration::from_millis(value.0.into())
+    }
+}
+
+pub type MapleDurationMs16 = DurationMs<u16>;
+pub type MapleDurationMs32 = DurationMs<u32>;
+
 #[cfg(test)]
 mod tests {
-    use super::MapleTime;
+    use std::time::Duration;
+
+    use crate::proto::MapleTryWrapped;
+
+    use super::{MapleTime, MapleDurationMs32};
 
     #[test]
     fn conv() {
         let _def = MapleTime::maple_default();
+    }
+
+    #[test]
+    fn dur() {
+        const MS: u32 = 100;
+        let dur = Duration::from_millis(MS as u64);
+
+        let m_dur: MapleDurationMs32 = dur.into();
+        assert_eq!(m_dur.maple_into_inner(), MS);
+        assert_eq!(dur, m_dur.into());
     }
 }

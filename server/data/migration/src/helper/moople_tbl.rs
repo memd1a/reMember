@@ -105,7 +105,7 @@ pub struct MoopleTbl {
 }
 
 impl MoopleTbl {
-    pub fn new<'a, T: IntoIden>(
+    pub fn new<T: IntoIden>(
         name: T,
         key: T,
         columns: impl IntoIterator<Item = ColumnDef>,

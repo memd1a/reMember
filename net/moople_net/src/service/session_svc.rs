@@ -1,28 +1,29 @@
-use std::{io, marker::PhantomData};
+use std::{fmt::Debug, io, marker::PhantomData, time::Duration};
 
-use futures::{channel::mpsc, SinkExt, Stream, StreamExt};
+use futures::{Stream, StreamExt};
 use moople_packet::{MaplePacket, NetError};
-use tokio::net::{TcpListener, TcpStream, ToSocketAddrs};
+use tokio::{net::{TcpListener, TcpStream, ToSocketAddrs}, sync::mpsc};
+use tokio_stream::wrappers::ReceiverStream;
 use tokio_util::sync::CancellationToken;
 
-use crate::{codec::handshake::Handshake, MapleSession};
+use crate::{codec::handshake::Handshake, service::handler::SessionError, MapleSession};
 
 use super::{
-    handler::{MakeServerSessionHandler, MapleServerSessionHandler, MapleSessionHandler},
+    handler::{MakeServerSessionHandler, MapleServerSessionHandler, MapleSessionHandler, BroadcastSender},
     HandshakeGenerator,
 };
 
 #[derive(Debug)]
 pub struct MapleSessionHandle<H: MapleSessionHandler> {
-    pub broadcast_tx: mpsc::Sender<MaplePacket>,
+    pub broadcast_tx: BroadcastSender,
     pub ct: CancellationToken,
-    pub handle: tokio::task::JoinHandle<Result<(), H::Error>>,
+    pub handle: tokio::task::JoinHandle<Result<(), SessionError<H::Error>>>,
     _handler: PhantomData<H>,
 }
 
 impl<H> MapleSessionHandle<H>
 where
-    H: MapleSessionHandler,
+    H: MapleSessionHandler + Send,
 {
     pub fn cancel(&mut self) {
         self.ct.cancel();
@@ -35,9 +36,9 @@ where
     async fn exec_server_session(
         mut session: MapleSession<H::Transport>,
         mut handler: H,
-        mut broadcast_rx: mpsc::Receiver<MaplePacket>,
+        broadcast_rx: mpsc::Receiver<MaplePacket>,
         ct: CancellationToken,
-    ) -> Result<(), H::Error>
+    ) -> Result<(), SessionError<H::Error>>
     where
         H: MapleServerSessionHandler,
         H::Transport: Unpin,
@@ -45,33 +46,52 @@ where
         let mut ping_interval = tokio::time::interval(H::get_ping_interval());
         ping_interval.tick().await;
 
+        let mut broadcast_rx = ReceiverStream::new(broadcast_rx);
+
         loop {
             //TODO might need some micro-optimization to ensure no future gets stalled
             tokio::select! {
                 biased;
                 // Handle next incoming packet
                 p = session.read_packet() => {
-                    match p {
-                        Ok(p) => handler.handle_packet(p, &mut session).await?,
-                        Err(NetError::IO(err)) if err.kind() == std::io::ErrorKind::UnexpectedEof => {
-                            log::info!("Client disconnected");
-                            break;
-                        },
-                        Err(err) => { return Err(err.into()); }
+                    let res = match p {
+                        Ok(p) => handler.handle_packet(p, &mut session).await,
+                        Err(net_err) => Err(SessionError::Net(net_err))
                     };
-                    /*let p = p?;
-                    handler.handle_packet(p, &mut session).await?;*/
+
+                    
+                    // If there's an error handle it
+                    if let Err(err) = res {
+                        log::info!("Err: {:?}", err);
+                        match err {
+                            SessionError::Net(NetError::IO(err)) if err.kind() == std::io::ErrorKind::UnexpectedEof  => {
+                                log::info!("Client disconnected");
+                                break;
+                            },
+                            SessionError::Net(NetError::Migrated) => {
+                                log::info!("Session migrated");
+                                handler.finish(true).await?;
+                                // Socket has to be kept open cause the client doesn't support
+                                // reading a packet when the socket is closed
+                                // TODO: make this configurable
+                                tokio::time::sleep(Duration::from_millis(7500)).await;
+                                break;
+                            },
+                            _ => {}
+                        };
+                    }
                 },
                 _ = ping_interval.tick() => {
-                    let ping_packet = handler.get_ping_packet()?;
+                    let ping_packet = handler.get_ping_packet().map_err(SessionError::Session)?;
                     log::info!("Sending ping packet: {:?}", ping_packet.data);
-                    session.codec.send(ping_packet).await?;
+                    session.send_raw_packet(ping_packet).await?;
                 },
                 //Handle broadcast packets
                 p = broadcast_rx.next() => {
                     // note tx is never dropped, so there'll be always a packet here
                     let p = p.unwrap();
-                    session.codec.send(p).await?;
+                    log::info!("Sending broadcast packet... {}", p.data.len());
+                    session.send_raw_packet(p).await?;
                 },
                 _ = ct.cancelled() => {
                     break;
@@ -91,7 +111,7 @@ where
         io: M::Transport,
         mut mk: M,
         handshake: Handshake,
-    ) -> Result<Self, M::Error>
+    ) -> Result<Self, SessionError<M::Error>>
     where
         M: MakeServerSessionHandler<Handler = H, Transport = H::Transport, Error = H::Error>
             + Send
@@ -100,14 +120,18 @@ where
         H::Transport: Unpin + Send + 'static,
         H::Error: Send + 'static,
     {
-        let (broadcast_tx, broadcast_rx) = mpsc::channel(16);
+        let (broadcast_tx, broadcast_rx) = mpsc::channel(128);
         let ct = CancellationToken::new();
         let ct_session = ct.clone();
+        let broadcast_tx_result = broadcast_tx.clone();
 
         let handle = tokio::spawn(async move {
             let res = async move {
                 let mut session = MapleSession::initialize_server_session(io, &handshake).await?;
-                let handler = mk.make_handler(&mut session).await?;
+                let handler = mk
+                    .make_handler(&mut session, broadcast_tx)
+                    .await
+                    .map_err(SessionError::Session)?;
                 let res =
                     Self::exec_server_session(session, handler, broadcast_rx, ct_session).await;
                 if let Err(ref err) = res {
@@ -126,7 +150,7 @@ where
         });
 
         Ok(MapleSessionHandle {
-            broadcast_tx,
+            broadcast_tx: broadcast_tx_result,
             ct,
             handle,
             _handler: PhantomData,
@@ -148,6 +172,7 @@ impl<MH, H> MapleServer<MH, H>
 where
     H: HandshakeGenerator,
     MH: MakeServerSessionHandler,
+    MH::Handler: Send,
 {
     pub fn new(handshake_gen: H, make_handler: MH) -> Self {
         Self {
@@ -161,7 +186,7 @@ where
         self.handles.retain(|handle| handle.is_running());
     }
 
-    fn handle_incoming(&mut self, io: MH::Transport) -> Result<(), MH::Error>
+    fn handle_incoming(&mut self, io: MH::Transport) -> Result<(), SessionError<MH::Error>>
     where
         MH: Send + Clone + 'static,
         MH::Error: From<io::Error> + Send + 'static,
@@ -181,7 +206,7 @@ where
         Ok(())
     }
 
-    pub async fn run<S>(&mut self, mut io: S) -> Result<(), MH::Error>
+    pub async fn run<S>(&mut self, mut io: S) -> Result<(), SessionError<MH::Error>>
     where
         MH: Send + Clone + 'static,
         MH::Error: From<io::Error> + Send + 'static,
@@ -190,7 +215,7 @@ where
         S: Stream<Item = std::io::Result<MH::Transport>> + Unpin,
     {
         while let Some(io) = io.next().await {
-            let io = io?;
+            let io = io.map_err(NetError::IO)?;
             self.handle_incoming(io)?;
         }
 
@@ -207,11 +232,14 @@ where
     MH: MakeServerSessionHandler<Transport = TcpStream> + Send + Clone + 'static,
     MH::Error: From<io::Error> + Send + 'static,
 {
-    pub async fn serve_tcp(&mut self, addr: impl ToSocketAddrs) -> Result<(), MH::Error> {
-        let listener = TcpListener::bind(addr).await?;
+    pub async fn serve_tcp(
+        &mut self,
+        addr: impl ToSocketAddrs,
+    ) -> Result<(), SessionError<MH::Error>> {
+        let listener = TcpListener::bind(addr).await.map_err(NetError::IO)?;
 
         loop {
-            let (io, _) = listener.accept().await?;
+            let (io, _) = listener.accept().await.map_err(NetError::IO)?;
             self.handle_incoming(io)?;
         }
     }

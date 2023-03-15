@@ -17,8 +17,14 @@ pub trait MapleConditional<'de>: Sized {
     fn packet_len_cond(&self, cond: bool) -> usize;
 }
 
-#[derive(Debug, PartialEq, Eq, Clone, Copy, Default)]
+#[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub struct CondOption<T>(pub Option<T>);
+
+impl<T> Default for CondOption<T> {
+    fn default() -> Self {
+        Self(None)
+    }
+}
 
 impl<T> From<Option<T>> for CondOption<T> {
     fn from(value: Option<T>) -> Self {

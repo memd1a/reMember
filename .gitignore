@@ -16,3 +16,4 @@ keys/**
 
 # test files
 data/test_files/**
+game_data/**
