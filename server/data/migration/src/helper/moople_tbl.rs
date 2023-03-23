@@ -1,6 +1,9 @@
 use sea_orm_migration::prelude::*;
 
-use super::{moople_ty::{moople_id, moople_id_pkey}, moople_opt_id};
+use super::{
+    moople_opt_id,
+    moople_ty::{moople_id, moople_id_pkey},
+};
 
 #[derive(Debug, Clone)]
 pub struct MoopleTableMeta {
@@ -119,14 +122,22 @@ impl MoopleTbl {
     }
     pub async fn drop_fk(&self, manager: &SchemaManager<'_>) -> Result<(), DbErr> {
         for (_, tbl) in self.refs.iter().map(Ref::get_val) {
-            manager
+            if let Err(err) = manager
                 .drop_foreign_key(self.meta.drop_foreign_key(tbl))
-                .await?;
+                .await
+            {
+                println!("Unable to delete fk: {:?}", err);
+                
+            }
         }
         Ok(())
     }
 
     pub async fn drop_table(&self, manager: &SchemaManager<'_>) -> Result<(), DbErr> {
+        if !manager.has_table(self.meta.name.to_string()).await? {
+            return Ok(());
+        }
+
         manager
             .drop_table(Table::drop().table(self.meta.name.clone()).to_owned())
             .await?;

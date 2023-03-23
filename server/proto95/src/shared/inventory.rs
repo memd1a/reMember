@@ -1,18 +1,35 @@
 use moople_derive::MooplePacket;
 use moople_packet::{
-    maple_packet_enum,
+    maple_enum_code, maple_packet_enum, packet_opcode,
     proto::{
+        list::{MapleIndexListZ16, MapleIndexListZ8},
         time::{MapleTime, Ticks},
-        MapleList8, list::{MapleIndexListZ16, MapleIndexListZ8},
+        MapleList8,
     },
 };
-use num_enum::TryFromPrimitive;
+
+use crate::{recv_opcodes::RecvOpcodes, send_opcodes::SendOpcodes, id::ItemId};
 
 use super::item::Item;
 
-#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Copy, TryFromPrimitive)]
-#[repr(u8)]
-pub enum EquippedSlot {
+//TODO indexing
+maple_enum_code!(
+    InventoryType,
+    u8,
+    Equip = 1,
+    Consume = 2,
+    Install = 30,
+    Etc = 4,
+    Cash = 5,
+    Equipped = 6,
+    Special = 9,
+    DragonEquipped = 10,
+    MechanicEquipped = 11
+);
+
+maple_enum_code!(
+    EquippedSlot,
+    u8,
     None = 0,
     Hat = 1,
     Face = 2,
@@ -35,12 +52,12 @@ pub enum EquippedSlot {
     Saddle = 19,
     Medal = 49,
     Belt = 50,
-    PetEquip = 114,
-}
+    PetEquip = 114
+);
 
-#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Copy, TryFromPrimitive)]
-#[repr(u8)]
-pub enum CashEquippedSlot {
+maple_enum_code!(
+    CashEquippedSlot,
+    u8,
     Hat = 101,
     Face = 102,
     Eye = 103,
@@ -58,8 +75,8 @@ pub enum CashEquippedSlot {
     Ring3 = 115,
     Ring4 = 116,
     Pendant = 117,
-    TamedMob = 118,
-}
+    TamedMob = 118
+);
 
 #[derive(Debug, MooplePacket)]
 pub struct InventoryInfo {
@@ -75,11 +92,7 @@ pub struct InventoryInfo {
     cash: MapleIndexListZ8<Item>,
 }
 
-#[derive(Debug, MooplePacket)]
-pub struct GatherItemsPacket {
-    timestamp: Ticks,
-    inv_ty: u8,
-}
+
 
 #[derive(Debug, MooplePacket)]
 pub struct SortItemsPacket {
@@ -124,29 +137,166 @@ pub struct ScrollEquipPacket {
 }
 
 #[derive(Debug, MooplePacket)]
-pub struct InventoryOperationInfo {
-    inventory_type: u8,
-    pos: u16,
+pub struct InvOpAdd {
+    pub inv_type: InventoryType,
+    pub pos: u16,
+    pub item: Item,
 }
 
 #[derive(Debug, MooplePacket)]
-pub struct InventoryOperationInfoWithArg {
-    inventory_type: u8,
-    pos: u16,
-    arg: u16,
+pub struct InvOpUpdateQuantity {
+    pub inv_type: InventoryType,
+    pub pos: u16,
+    pub quantity: u16,
+}
+
+#[derive(Debug, MooplePacket)]
+pub struct InvOpMove {
+    pub inv_type: InventoryType,
+    pub pos: u16,
+    pub new_pos: u16,
+}
+
+#[derive(Debug, MooplePacket)]
+pub struct InvOpRemove {
+    pub inv_type: InventoryType,
+    pub pos: u16,
+}
+
+#[derive(Debug, MooplePacket)]
+pub struct InvOpUpdateExp {
+    pub inv_type: InventoryType,
+    pub pos: u16,
 }
 
 maple_packet_enum!(
     InventoryOperation,
     u8,
-    Add(InventoryOperationInfo) => 0,
-    ChangeCount(InventoryOperationInfoWithArg) => 1,
-    Swap(InventoryOperationInfoWithArg) => 2,
-    Remove(InventoryOperationInfo) => 3
+    Add(InvOpAdd) => 0,
+    UpdateQuantity(InvOpUpdateQuantity) => 1,
+    Move(InvOpMove) => 2,
+    Remove(InvOpRemove) => 3,
+    UpdateExp(InvOpUpdateExp) => 4
 );
 
 #[derive(Debug, MooplePacket)]
-pub struct InventoryOperationsPacket {
-    update_tick: bool,
-    operations: MapleList8<InventoryOperation>, //TODO move internal tail byte
+pub struct InventoryOperationsResp {
+    pub reset_excl: bool,
+    pub operations: MapleList8<InventoryOperation>,
+    pub secondary_stat_changed: bool, //TODO optional tail byte
+                                      // Updated when operation is done on equip inv, either Move(2), Remove(3)
 }
+packet_opcode!(InventoryOperationsResp, SendOpcodes::InventoryOperation);
+
+#[derive(MooplePacket, Debug)]
+pub struct InvGrowResp {
+    pub inv_type: InventoryType, //TODO only first 6 inv can grow
+    pub new_size: u8,
+}
+packet_opcode!(InvGrowResp, SendOpcodes::InventoryGrow);
+
+#[derive(MooplePacket, Debug)]
+pub struct InvChangeSlotPosReq {
+    pub ticks: Ticks,
+    pub inv_type: InventoryType,
+    pub old_pos: u16,
+    pub new_pos: u16,
+    pub count: u16,
+}
+packet_opcode!(
+    InvChangeSlotPosReq,
+    RecvOpcodes::UserChangeSlotPositionRequest
+);
+
+#[derive(MooplePacket, Debug)]
+pub struct InvSortRequest {
+    pub ticks: Ticks,
+    pub inv_type: InventoryType,
+}
+packet_opcode!(InvSortRequest, RecvOpcodes::UserSortItemRequest);
+
+// Use an item like magnifying glass, maybe hammer aswell?
+#[derive(MooplePacket, Debug)]
+pub struct ItemReleaseReq {
+    pub ticks: Ticks,
+    pub use_slot: u16,
+    pub equip_slot: u16,
+}
+packet_opcode!(ItemReleaseReq, RecvOpcodes::UserItemReleaseRequest);
+
+#[derive(Debug, MooplePacket)]
+pub struct GatherItemReq {
+    pub timestamp: Ticks,
+    pub inv_ty: InventoryType,
+}
+packet_opcode!(GatherItemReq, RecvOpcodes::UserGatherItemRequest);
+
+#[derive(Debug, MooplePacket)]
+pub struct ItemOptionUpgradeReq {
+    pub timestamp: Ticks,
+    pub use_slot: u16,
+    pub equip_slot: u16,
+    pub enchant_skill: bool
+}
+packet_opcode!(ItemOptionUpgradeReq, RecvOpcodes::UserItemOptionUpgradeItemUseRequest);
+
+#[derive(Debug, MooplePacket)]
+pub struct ItemHyperUpgradeReq {
+    pub timestamp: Ticks,
+    pub use_slot: u16,
+    pub equip_slot: u16,
+    pub enchant_skill: bool
+}
+packet_opcode!(ItemHyperUpgradeReq, RecvOpcodes::UserHyperUpgradeItemUseRequest);
+
+#[derive(Debug, MooplePacket)]
+pub struct ItemUpgradeReq {
+    pub timestamp: Ticks,
+    pub use_slot: u16,
+    pub equip_slot: u16,
+    pub white_scroll_slot: u16,
+    pub enchant_skill: bool
+}
+packet_opcode!(ItemUpgradeReq, RecvOpcodes::UserUpgradeItemUseRequest);
+
+#[derive(Debug, MooplePacket)]
+pub struct TamingMobUseFoodReq {
+    pub timestamp: Ticks,
+    pub food_slot: u16,
+    pub item_id: ItemId
+}
+packet_opcode!(TamingMobUseFoodReq, RecvOpcodes::UserTamingMobFoodItemUseRequest);
+
+#[derive(Debug, MooplePacket)]
+pub struct ItemOpenUIReq {
+    pub timestamp: Ticks,
+    pub slot: u16,
+    pub item_id: ItemId
+}
+packet_opcode!(ItemOpenUIReq, RecvOpcodes::UserUIOpenItemUseRequest);
+
+#[derive(Debug, MooplePacket)]
+pub struct ItemLearnSkillReq {
+    pub timestamp: Ticks,
+    pub slot: u16,
+    pub item_id: ItemId
+}
+packet_opcode!(ItemLearnSkillReq, RecvOpcodes::UserSkillLearnItemUseRequest);
+
+#[derive(Debug, MooplePacket)]
+pub struct UserSitReq {
+    pub seat_id: u16
+}
+
+impl UserSitReq {
+    pub fn get_up() -> Self {
+        Self::seat(u16::MAX)
+    }
+
+    pub fn seat(seat_id: u16) -> Self {
+        Self {
+            seat_id
+        }
+    }
+}
+packet_opcode!(UserSitReq, RecvOpcodes::UserSitRequest);

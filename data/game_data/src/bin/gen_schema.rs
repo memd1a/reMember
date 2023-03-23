@@ -1,10 +1,16 @@
-use std::{collections::BTreeMap, fs::File};
+use std::{
+    collections::{BTreeMap, HashMap},
+    fs::File,
+    path::Path,
+};
 
+use anyhow::Context;
 use game_data::{
     gen,
     ha_xml::{HaXmlNumericDir, HaXmlValue},
     schema::Schema,
 };
+use serde::Serialize;
 
 fn preprocess_map(v: &mut HaXmlValue) {
     // Remove any numeric key
@@ -31,10 +37,27 @@ fn preprocess_map(v: &mut HaXmlValue) {
         .insert("extra".to_string(), HaXmlValue::NumericDir(extra_dir));
 }
 
+pub fn save_dir<'a, T: Serialize + TryFrom<&'a HaXmlValue, Error = anyhow::Error>>(
+    file: impl AsRef<Path>,
+    v: &'a HashMap<String, HaXmlValue>,
+) -> anyhow::Result<()> {
+    let mapped_maps = v
+        .iter()
+        .map(|(k, v)| Ok((k.parse::<u64>()?, T::try_from(v).context(k.to_string())?)))
+        .collect::<anyhow::Result<BTreeMap<u64, T>>>()?;
+
+    let mut f = File::create(file)?;
+    bincode::serialize_into(&mut f, &mapped_maps)?;
+    Ok(())
+}
+
 fn main() -> anyhow::Result<()> {
     let mut v = HaXmlValue::load_from_glob(
         glob::glob("game_data/Map.wz/Map/Map0/*.xml").unwrap(),
-        &["0char", "2char", "ToolTip", "nodeInfo"],
+        //glob::glob("game_data/Mob.wz/*.img.xml").unwrap(),
+        &[
+            "0char", "2char", "ToolTip", "nodeInfo", "effect0", "Effect0", "effect",
+        ],
     )
     .unwrap();
     for (_, v) in v.iter_mut() {
@@ -49,16 +72,10 @@ fn main() -> anyhow::Result<()> {
 
     let mut str = String::new();
     schema.fmt_rust(&mut str)?;
-    //println!("{str}");
+    println!("{str}");
 
-    let mapped_maps  = v
-        .iter()
-        .map(|(k, v)| Ok((k.parse::<u64>()?, <gen::map::Map>::try_from(v)?)))
-        .collect::<anyhow::Result<BTreeMap<u64, gen::map::Map>>>()?;
-
-
-    let mut f = File::create("map0.rbin")?;
-    bincode::serialize_into(&mut f, &mapped_maps)?;
-    println!("Wrote maps, cwd: {:?}", std::env::current_dir()?);
+    //save_dir::<gen::mob::Mob>("mob.rbin", &v)?;
+    save_dir::<gen::mob::Mob>("map0.rbin", &v)?;
+    println!("Wrote data, cwd: {:?}", std::env::current_dir()?);
     Ok(())
 }

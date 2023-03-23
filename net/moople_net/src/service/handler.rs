@@ -28,7 +28,7 @@ pub trait MapleSessionHandler: Sized {
     async fn handle_packet(
         &mut self,
         packet: MaplePacket,
-        session: &mut MapleSession<Self::Transport>
+        session: &mut MapleSession<Self::Transport>,
     ) -> Result<(), SessionError<Self::Error>>;
 
     async fn finish(self, _is_migrating: bool) -> Result<(), SessionError<Self::Error>> {
@@ -51,7 +51,7 @@ pub trait MakeServerSessionHandler {
     async fn make_handler(
         &mut self,
         sess: &mut MapleSession<Self::Transport>,
-        broadcast_tx: BroadcastSender
+        broadcast_tx: BroadcastSender,
     ) -> Result<Self::Handler, Self::Error>;
 }
 
@@ -105,36 +105,17 @@ macro_rules! maple_router_handler {
 mod tests {
     use std::io;
 
-    use moople_packet::{
-        opcode::HasOpcode, proto::wrapped::MapleWrapped, MaplePacketReader, MaplePacketWriter,
-    };
+    use moople_packet::{opcode::WithOpcode, MaplePacketReader, MaplePacketWriter};
     use tokio_util::codec::Framed;
 
     use crate::{
         codec::{handshake::Handshake, maple_codec::MapleCodec},
         crypto::RoundKey,
-        MapleSession, service::handler::SessionError,
+        service::handler::SessionError,
+        MapleSession,
     };
 
-    #[derive(Debug, Default)]
-    struct Req1(u16);
-    impl MapleWrapped for Req1 {
-        type Inner = u16;
-
-        fn maple_into_inner(&self) -> Self::Inner {
-            self.0
-        }
-
-        fn maple_from(v: Self::Inner) -> Self {
-            Self(v)
-        }
-    }
-
-    impl HasOpcode for Req1 {
-        type OP = u16;
-
-        const OPCODE: Self::OP = 0;
-    }
+    pub type Req1 = WithOpcode<0, u16>;
 
     #[derive(Debug, Default)]
     struct State {
@@ -147,7 +128,11 @@ mod tests {
             Ok(())
         }
 
-        async fn handle_default(&mut self, _op: u16, _pr: MaplePacketReader<'_>) -> anyhow::Result<()> {
+        async fn handle_default(
+            &mut self,
+            _op: u16,
+            _pr: MaplePacketReader<'_>,
+        ) -> anyhow::Result<()> {
             Ok(())
         }
     }

@@ -1,20 +1,22 @@
-use std::ops::Add;
-use std::sync::atomic::{AtomicI32, Ordering};
+pub mod repl;
+pub mod state;
+
 use std::sync::Arc;
 
 use std::{net::IpAddr, time::Duration};
 
 use async_trait::async_trait;
 
-use data::entities::character;
 use data::services::field::FieldJoinHandle;
-use data::services::helper::pool::drop::{DropTypeValue, DropLeaveParam};
+use data::services::helper::pool::drop::{DropLeaveParam, DropTypeValue};
 use data::services::session::session_data::MoopleSessionHolder;
 use data::services::session::session_set::{SharedSessionData, SharedSessionDataRef};
 use data::services::session::{ClientKey, MoopleMigrationKey};
 use data::services::SharedServices;
 use moople_net::service::handler::BroadcastSender;
+use moople_net::service::packet_buffer::PacketBuffer;
 use moople_net::service::resp::PacketOpcodeExt;
+use moople_net::SessionTransport;
 use moople_net::{
     maple_router_handler,
     service::{
@@ -25,8 +27,11 @@ use moople_net::{
     },
     MapleSession,
 };
-use moople_packet::proto::list::MapleIndexList8;
 
+use moople_packet::EncodePacket;
+
+use moople_packet::proto::list::MapleIndexListZ;
+use moople_packet::proto::time::MapleExpiration;
 use moople_packet::{
     proto::{
         list::{MapleIndexListZ16, MapleIndexListZ8},
@@ -36,14 +41,17 @@ use moople_packet::{
     DecodePacket, HasOpcode, MaplePacket, MaplePacketReader, MaplePacketWriter,
 };
 
-use data::services::helper::pool::{Drop, Mob, Npc};
+use data::services::helper::pool::Drop;
 
-use proto95::game::user::{UserDropMoneyReq, UserDropPickUpReq};
+use proto95::game::mob::{MobMoveCtrlAckResp, MobMoveReq};
+use proto95::game::user::{
+    ChangeSkillRecordResp, UpdatedSkillRecord, UserDropMoneyReq, UserDropPickUpReq,
+    UserMeleeAttackReq, UserSkillUpReq,
+};
 
-use proto95::id::{FaceId, HairId, ItemId, Skin};
-use proto95::shared::char::{AvatarData, PetIds};
+use proto95::shared::char::{SkillInfo, TeleportRockInfo};
 use proto95::shared::movement::Movement;
-use proto95::shared::{FootholdId, Range2, Vec2};
+use proto95::shared::{FootholdId, Vec2};
 use proto95::{
     game::{
         chat::{ChatMsgReq, UserChatMsgResp},
@@ -64,13 +72,14 @@ use proto95::{
     shared::{
         char::{
             CharDataAll, CharDataEquipped, CharDataFlagsAll, CharDataHeader, CharDataStat,
-            CharStatChangedResp, CharStatPartial, TeleportRockInfo,
+            CharStatChangedResp, CharStatPartial,
         },
         item::Item,
         UpdateScreenSettingReq,
     },
     stats::PartialFlag,
 };
+use repl::GameRepl;
 use tokio::net::TcpStream;
 
 pub type GameResponse<T> = ResponsePacket<SendOpcodes, T>;
@@ -128,11 +137,12 @@ pub struct GameHandler {
     services: SharedServices,
     addr: IpAddr,
     client_key: ClientKey,
-    broadcast_tx: BroadcastSender,
     handle: SharedSessionDataRef,
     pos: Vec2,
     fh: FootholdId,
     field: FieldJoinHandle,
+    repl: GameRepl,
+    packet_buf: PacketBuffer,
 }
 
 impl GameHandler {
@@ -176,11 +186,14 @@ impl GameHandler {
             broadcast_tx: broadcast_tx.clone(),
         });
 
+        let mut packet_buf = PacketBuffer::new();
+
         let join_field = services
             .field
             .join_field(
                 session.char.id,
                 handle.clone(),
+                &mut packet_buf,
                 MapId(session.char.map_id as u32),
             )
             .await?;
@@ -192,11 +205,12 @@ impl GameHandler {
             world_id,
             addr,
             client_key: req.client_key,
-            broadcast_tx,
             pos: Vec2::default(),
             fh: 0,
             handle,
             field: join_field,
+            packet_buf,
+            repl: GameRepl::new(),
         })
     }
 }
@@ -225,9 +239,15 @@ impl MapleSessionHandler for GameHandler {
             TransferChannelReq => GameHandler::handle_channel_transfer,
             UserDropPickUpReq => GameHandler::handle_drop_pick_up,
             UserDropMoneyReq => GameHandler::handle_drop_money,
+            MobMoveReq => GameHandler::handle_mob_move,
+            UserMeleeAttackReq => GameHandler::handle_melee_attack,
+            UserSkillUpReq => GameHandler::handle_skill_up
         );
 
         handler(self, session, packet.into_reader()).await?;
+        self.flush_packet_buf(session)
+            .await
+            .map_err(SessionError::Session)?;
 
         Ok(())
     }
@@ -260,6 +280,32 @@ impl MapleServerSessionHandler for GameHandler {
 }
 
 impl GameHandler {
+    async fn handle_skill_up(&mut self, req: UserSkillUpReq) -> GameResult<ChangeSkillRecordResp> {
+        dbg!(&req);
+        Ok(ChangeSkillRecordResp {
+            reset_excl: true,
+            skill_records: vec![UpdatedSkillRecord {
+                id: req.skill_id,
+                level: 1,
+                master_level: 0,
+                expiration: MapleExpiration::never(),
+            }]
+            .into(),
+            updated_secondary_stat: false,
+        }
+        .into())
+    }
+
+    async fn flush_packet_buf<Trans: SessionTransport + Unpin>(
+        &mut self,
+        sess: &mut MapleSession<Trans>,
+    ) -> anyhow::Result<()> {
+        sess.send_packet_buffer(&self.packet_buf).await?;
+        self.packet_buf.clear();
+
+        Ok(())
+    }
+
     pub fn enable_char(&mut self) -> CharStatChangedResp {
         CharStatChangedResp {
             excl: true,
@@ -299,6 +345,7 @@ impl GameHandler {
             .await?;
 
         sess.send_packet(self.enable_char()).await?;
+        self.flush_packet_buf(sess).await?;
 
         Ok(())
     }
@@ -322,10 +369,31 @@ impl GameHandler {
             .map(|(slot, item)| (slot as u8 + 1, Item::Stack(item.item.as_ref().into())))
             .collect();
 
+        // TODO cash slots
+        let invsize = [
+            char.equip_slots as u8,
+            char.use_slots as u8,
+            char.setup_slots as u8,
+            char.etc_slots as u8,
+            char.equip_slots as u8,
+        ];
+
         let char_equipped = CharDataEquipped {
             equipped,
             ..Default::default()
         };
+
+        let skill_records: MapleList16<SkillInfo> = self
+            .session
+            .skills
+            .iter()
+            .map(|(id, skill)| SkillInfo {
+                id: *id,
+                level: skill.skill_level as u32,
+                expiration: skill.expires_at.into(),
+                master_level: skill.master_level as u32,
+            })
+            .collect();
 
         let char_data = CharDataAll {
             stat: CharDataStat {
@@ -334,31 +402,24 @@ impl GameHandler {
                 linked_character: None.into(),
             },
             money: char.mesos as u32,
-            inv_size: [20; 5],
-            equip_ext_slot_expire: MapleTime(0),
+            invsize,
+            equipextslotexpiration: MapleExpiration::never(),
             equipped: char_equipped,
-            use_inv: MapleIndexListZ8::default(),
-            setup_inv: MapleIndexListZ8::default(),
-            etc_inv: etc,
-            cash_inv: MapleIndexListZ8::default(),
-            skill_records: MapleList16::default(),
-            skill_cooltime: MapleList16::default(),
+            useinv: MapleIndexListZ::default(),
+            setupinv: MapleIndexListZ::default(),
+            etcinv: etc,
+            cashinv: MapleIndexListZ::default(),
+            skillrecords: skill_records,
+            skllcooltime: MapleList16::default(),
             quests: MapleList16::default(),
-            quests_completed: MapleList16::default(),
-            mini_game_records: MapleList16::default(),
-            social_records: MapleList16::default(),
-            teleport_rock_info: TeleportRockInfo {
-                maps: [MapId(0); 5],
-                vip_maps: [MapId(10000); 10],
-            },
-            new_year_cards: MapleList16::default(),
-            quest_records_expired: MapleList16::default(),
-            /*wildhunterinfo: WildHunterInfo {
-                riding_ty_id: 0,
-                captured_mobs: [0; 5]
-            },*/
-            quest_complete_old: MapleList16::default(),
-            visitor_quest_log_info: MapleList16::default(),
+            questscompleted: MapleList16::default(),
+            minigamerecords: MapleList16::default(),
+            socialrecords: MapleList16::default(),
+            teleportrockinfo: TeleportRockInfo::default(),
+            newyearcards: MapleList16::default(),
+            questrecordsexpired: MapleList16::default(),
+            questcompleteold: MapleList16::default(),
+            visitorquestloginfo: MapleList16::default(),
         };
 
         let char_data = SetFieldCharData {
@@ -399,6 +460,23 @@ impl GameHandler {
         Ok(())
     }
 
+    async fn handle_melee_attack(&mut self, req: UserMeleeAttackReq) -> anyhow::Result<()> {
+        dbg!(&req);
+        for target in req.targets {
+            let dmg = target.hits.iter().sum::<u32>();
+            self.field
+                .attack_mob(
+                    target.mob_id,
+                    dmg,
+                    self.session.char.id as u32,
+                    &mut self.packet_buf,
+                )
+                .await?;
+        }
+
+        Ok(())
+    }
+
     async fn handle_drop_pick_up(
         &mut self,
         req: UserDropPickUpReq,
@@ -419,153 +497,65 @@ impl GameHandler {
     ) -> GameResult<CharStatChangedResp> {
         self.field
             .add_drop(Drop {
-                owner: self.session.char.id as u32,
+                owner: proto95::game::drop::DropOwner::User(self.session.char.id as u32),
                 pos: self.pos,
                 start_pos: self.pos,
                 value: DropTypeValue::Mesos(req.money),
+                quantity: 1,
             })
             .await?;
         Ok(self.enable_char().into())
     }
 
-    async fn handle_chat_msg(&mut self, req: ChatMsgReq) -> GameResult<UserChatMsgResp> {
-        static INITIAL: AtomicI32 = AtomicI32::new(1337);
-
-        let next_id = INITIAL.fetch_add(1, Ordering::SeqCst);
-
-        /*let secondary_stats =  RemoteCharSecondaryStatPartial {
-            //shadowpartner: Some(4111002).into(),
-            darksight: Some(()).into(),
-            curse: Some(1000).into(),
-            ..Default::default()
-        };
-
-
-
-        let secondary_stat = PartialFlag { hdr: (), data: secondary_stats };
-
-        let mut secondary_pw = MaplePacketWriter::default();
-        secondary_stat.encode_packet(&mut secondary_pw)?;
-        dbg!(&secondary_pw.into_packet().data[..]);
-
-        let avatar = map_char_to_avatar(&self.session.char);
-
-
-
-        // Spawn a new user with the name fo the msg
-        let pkt = UserEnterFieldResp {
-            char_id: next_id as u32,
-            user_init_data: UserRemoteInitData{
-                level: 30,
-                name: req.msg.clone(),
-                guild_name: "Eden".to_string(),
-                guild_mark: GuildMarkData::default(),
-                secondary_stat,
-                avatar,
-                driver_id: 0,
-                passenger_id: 0,
-                choco_count: 0,
-                active_effect_item: ItemId(0),
-                completed_set_item_id: ItemId(0),
-                portable_chair: ItemId(0),
-                pos: self.pos,
-                fh: self.fh,
-                show_admin_effects: false,
-                pet_infos: MapleIndexListZ::default(),
-                taming_mob: TamingMobData::default(),
-                mini_room: None.into(),
-                ad_board: None.into(),
-                couple: None.into(),
-                friendship: None.into(),
-                marriage: None.into(),
-                load_flags: 0,
-                new_year_cards: None.into(),
-                phase: 0,
-                defense_att: 0,
-                defense_state: 0,
-                job: JobId::Bandit,
-                move_action: 0,
-            }
-        };
-        let op = UserEnterFieldResp::OPCODE;*/
-        let char_pos = self.pos.add((0, -20).into());
-        let char_fh = self.fh;
-        let new_mob_id = next_id as u32;
-
-        let msg = req.msg.as_str();
-
-        if msg.starts_with("aggro") {
-            self.field
-                .assign_mob_controller(SharedSessionDataRef::new(SharedSessionData {
-                    broadcast_tx: self.broadcast_tx.clone(),
-                }))
-                .await?;
-        }
-
-        if msg.starts_with("mob") {
-            self.field
-                .add_mob(Mob {
-                    tmpl_id: 1110100,
-                    pos: char_pos,
-                    fh: char_fh,
-                    origin_fh: None,
-                })
-                .await?;
-        } else if msg.starts_with("npc") {
-            if let Some(npc) = self
-                .field
-                .get_meta()
-                .life
-                .values()
-                .find(|life| life._type == "n")
-            {
-                dbg!(npc);
-                let tmpl_id: u32 = npc.id.parse().unwrap();
-                self.field
-                    .add_npc(Npc {
-                        tmpl_id,
-                        pos: Vec2::from((npc.x as i16, npc.y as i16)),
-                        fh: npc.fh as FootholdId,
-                        move_action: 0,
-                        range_horz: Range2 {
-                            low: npc.rx_0 as i16,
-                            high: npc.rx_1 as i16,
-                        },
-                        enabled: true,
-                    })
-                    .await?;
-            }
-        } else {
-            let drop_type = if new_mob_id % 2 == 0 {
-                DropTypeValue::Item(ItemId::ADVANCED_MONSTER_CRYSTAL_1)
-            } else {
-                DropTypeValue::Mesos(1_000)
+    async fn handle_chat_msg(&mut self, req: ChatMsgReq) -> anyhow::Result<()> {
+        let admin = false;
+        if let Some(s) = req.msg.strip_prefix('@') {
+            let repl_resp = self.handle_repl(s).await?;
+            let Some(msg) = repl_resp else {
+                return Ok(())
             };
+            let resp = UserChatMsgResp {
+                char: self.session.char.id as u32,
+                is_admin: admin,
+                msg,
+                only_balloon: false,
+            };
+            let mut pw = MaplePacketWriter::default();
+            pw.write_opcode(UserChatMsgResp::OPCODE);
+            resp.encode_packet(&mut pw)?;
 
+            self.handle.broadcast_tx.send(pw.into_packet()).await?;
+        } else {
             self.field
-                .add_drop(Drop {
-                    owner: 0,
-                    pos: self.pos,
-                    start_pos: self.pos,
-                    value: drop_type,
+                .add_chat(UserChatMsgResp {
+                    char: self.session.char.id as u32,
+                    is_admin: admin,
+                    msg: req.msg,
+                    only_balloon: req.only_balloon,
                 })
                 .await?;
-        }
+        };
+        Ok(())
+    }
 
-        Ok(UserChatMsgResp {
-            char: self.session.char.id as u32,
-            is_admin: true,
-            msg: format!("MSG: {}", req.msg),
-            only_balloon: req.only_balloon,
+    async fn handle_mob_move(&mut self, req: MobMoveReq) -> GameResult<MobMoveCtrlAckResp> {
+        self.field.update_mob_pos(&req).await?;
+
+        Ok(MobMoveCtrlAckResp {
+            id: req.id,
+            ctrl_sn: req.ctrl_sn,
+            next_atk_possible: false,
+            mp: 0,
+            skill_id: 0,
+            slv: 0,
         }
         .into())
     }
 
     async fn handle_portal_script(
         &mut self,
-        req: UserPortalScriptReq,
+        _req: UserPortalScriptReq,
     ) -> GameResult<CharStatChangedResp> {
-        dbg!(&req);
         Ok(self.enable_char().into())
     }
 
@@ -573,7 +563,6 @@ impl GameHandler {
         &mut self,
         req: UserTransferFieldReq,
     ) -> GameResult<SetFieldResp> {
-        dbg!(&req);
         let portal = self
             .field
             .get_meta()
@@ -581,7 +570,6 @@ impl GameHandler {
             .values()
             .find(|p| p.pn == req.portal)
             .ok_or_else(|| anyhow::format_err!("Invalid portal"))?;
-        dbg!(portal);
 
         // TODO(!) tm should be an option as mapid 999999 is invalid
         let map_id = MapId(portal.tm as u32);
@@ -603,6 +591,7 @@ impl GameHandler {
             .join_field(
                 self.session.char.id,
                 self.handle.clone(),
+                &mut self.packet_buf,
                 MapId(self.session.char.map_id as u32),
             )
             .await?;
@@ -648,24 +637,5 @@ impl GameHandler {
         .into_response(MigrateCommandResp::OPCODE);
 
         Ok(MigrateResponse(pkt))
-    }
-}
-
-pub fn map_char_to_avatar(char: &character::Model) -> AvatarData {
-    AvatarData {
-        gender: (&char.gender).into(),
-        skin: Skin::try_from(char.skin as u8).unwrap(),
-        mega: true,
-        face: FaceId(char.face as u32),
-        hair: HairId(char.hair as u32),
-        equips: MapleIndexList8::from(vec![
-            (5, ItemId(1040006)),
-            (6, ItemId(1060006)),
-            (7, ItemId(1072005)),
-            (11, ItemId(1322005)),
-        ]),
-        masked_equips: MapleIndexList8::from(vec![]),
-        weapon_sticker_id: ItemId(0),
-        pets: PetIds::default(),
     }
 }

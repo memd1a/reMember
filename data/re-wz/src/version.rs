@@ -3,6 +3,12 @@ use crate::keys::{self, WzKey};
 #[derive(Debug)]
 pub struct WzVersion(pub u16);
 
+impl From<u16> for WzVersion {
+    fn from(value: u16) -> Self {
+        Self(value)
+    }
+}
+
 fn version_hash(v: u16) -> u32 {
     let mut buffer = itoa::Buffer::new();
     buffer.format(v).as_bytes().iter().fold(0, |mut acc, &c| {

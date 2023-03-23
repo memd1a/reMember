@@ -1,13 +1,26 @@
 use either::Either;
 use proto95::{
     id::{job_id::JobId, FaceId, HairId, MapId, Skin},
-    shared::char::{CharStat, Pets},
+    shared::char::{CharStat, Pets, SkillPointPage},
 };
 
 use crate::entities::character;
 
+
+
 impl From<&character::Model> for CharStat {
     fn from(char: &character::Model) -> Self {
+        let job = JobId::try_from(char.job as u16).unwrap();
+        let sp = if !job.has_extended_sp() {
+            Either::Right(char.sp as u16)
+        } else {
+            let pages = char.get_skill_pages();
+            Either::Left(array_init::array_init(|i| SkillPointPage {
+                index: i as u8,
+                value: pages[i],
+            }))
+        };
+
         CharStat {
             char_id: char.id as u32,
             name: char.name.as_str().try_into().unwrap(),
@@ -17,7 +30,7 @@ impl From<&character::Model> for CharStat {
             hair: HairId(char.hair as u32),
             pets: Pets::default(),
             level: char.level as u8,
-            job_id: JobId::try_from(char.job as u16).unwrap(),
+            job_id: job,
             str: char.str as u16,
             dex: char.dex as u16,
             int: char.int as u16,
@@ -27,7 +40,7 @@ impl From<&character::Model> for CharStat {
             mp: char.mp as u32,
             max_mp: char.max_mp as u32,
             ap: char.ap as u16,
-            sp: Either::Right(char.sp as u16).into(),
+            sp: sp.into(),
             exp: char.exp,
             fame: char.fame as u16,
             tmp_exp: char.gacha_exp as u32,

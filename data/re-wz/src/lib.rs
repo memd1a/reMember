@@ -7,6 +7,8 @@ pub mod tree;
 pub mod ty;
 pub mod version;
 
+pub use file::WzReader;
+
 
 #[cfg(test)]
 mod tests {

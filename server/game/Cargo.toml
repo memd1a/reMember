@@ -10,6 +10,7 @@ anyhow = "1.0.69"
 async-trait = "0.1.64"
 bytes = "1.4.0"
 chrono = "0.4.23"
+clap = { version = "4.1.8", features = ["derive"] }
 dashmap = "5.4.0"
 data = { version = "0.1.0", path = "../data" }
 game_data = { version = "0.1.0", path = "../../data/game_data" }

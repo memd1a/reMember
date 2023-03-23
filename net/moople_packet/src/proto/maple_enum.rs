@@ -1,7 +1,7 @@
 #[macro_export]
 macro_rules! maple_enum_code {
     ($name:ident, $repr_ty:ty, $($code_name:ident = $val:expr),+) => {
-        #[derive(Debug, Clone, PartialEq, Eq, num_enum::TryFromPrimitive, num_enum::IntoPrimitive)]
+        #[derive(Debug, Copy, Clone, PartialEq, Eq, num_enum::TryFromPrimitive, num_enum::IntoPrimitive)]
         #[repr($repr_ty)]
         pub enum $name {
             $($code_name = $val,)*
@@ -11,7 +11,7 @@ macro_rules! maple_enum_code {
     };
 
     ($name:ident, $repr_ty:ty, default($def_name:ident = $def_val:expr), $($code_name:ident = $val:expr),+,) => {
-        #[derive(Debug, Clone, PartialEq, Eq, num_enum::TryFromPrimitive, num_enum::IntoPrimitive, Default)]
+        #[derive(Debug, Copy, Clone, PartialEq, Eq, num_enum::TryFromPrimitive, num_enum::IntoPrimitive, Default)]
         #[repr($repr_ty)]
         pub enum $name {
             #[default]

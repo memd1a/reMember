@@ -118,3 +118,22 @@ pub struct WzProperty {
     #[brw(args(crypto))]
     pub entries: WzVec<WzPropertyEntry>,
 }
+
+
+#[binrw]
+#[brw(little, import(crypto: &WzCrypto))]
+#[derive(Debug)]
+pub struct WzUOL {
+    pub unknown: u8,
+    #[brw(args(crypto))]
+    pub entries: WzUOLStr,
+}
+
+
+#[binrw]
+#[brw(little)]
+#[derive(Debug)]
+pub struct WzVector2D {
+    pub x: WzInt,
+    pub y: WzInt
+}

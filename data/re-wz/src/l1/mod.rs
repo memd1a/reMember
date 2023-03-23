@@ -1,3 +1,4 @@
+pub mod tree;
 pub mod obj;
 use binrw::{binread, binrw, BinWrite, FilePtr};
 

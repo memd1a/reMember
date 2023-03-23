@@ -12,7 +12,7 @@ use crate::{
 };
 
 // Must be a multiple of WZ_KEY_LEN
-pub const WZ_KEY_BUFFER_LEN: usize = WZ_KEY_LEN * 16; // 256
+pub const WZ_KEY_BUFFER_LEN: usize = WZ_KEY_LEN * 16_000; // 256
 pub type WzKeyBufferLen = U256;
 
 // Waiting for this to become stable...
@@ -110,6 +110,7 @@ impl WzCrypto {
         if n <= WZ_KEY_BUFFER_LEN {
             self.transform_small(buf)
         } else {
+            dbg!(n);
             self.transform_large(buf)
         }
     }
@@ -151,10 +152,8 @@ mod tests {
         let mut data = [0u8; 4];
         let chunks = as_chunks_mut::<4, 2>(&mut data);
 
-        chunks[0][0] = 4;
-        chunks[0][1] = 3;
-        chunks[1][0] = 2;
-        chunks[1][1] = 1;
+        chunks[0] = [4, 3];
+        chunks[1] = [2, 1];
 
         assert_eq!(data, [4, 3, 2, 1]);
     }

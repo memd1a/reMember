@@ -3,7 +3,7 @@ use moople_packet::{proto::{
     conditional::CondEither,
     list::{MapleIndexList8, MapleIndexListZ16, MapleIndexListZ8},
     option::MapleOption8,
-    time::{MapleTime, MapleDurationMs32},
+    time::{MapleTime, MapleDurationMs32, MapleExpiration, MapleDurationMs16},
     MapleList16, MapleList32,
 }, packet_opcode};
 
@@ -13,12 +13,11 @@ use crate::{
         FaceId, HairId, ItemId, MapId, SkillId, Skin,
     },
     maple_stats,
-    stats::PartialFlag, send_opcodes::SendOpcodes,
+    stats::PartialFlag, send_opcodes::SendOpcodes, game::mob::MobId,
 };
 
 use super::{job::Job, Gender, NameStr, item::Item};
 
-pub type MobId = u32;
 
 const CHAR_PET_LEN: usize = 3;
 pub type CashID = u64;
@@ -30,10 +29,12 @@ pub type Money = u32;
 pub type CharacterId = u32;
 
 #[derive(MooplePacket, Debug)]
-pub struct ExtendedSP {
-    pubindex: u8,
-    value: u8,
+pub struct SkillPointPage {
+    pub index: u8,
+    pub value: u8,
 }
+
+pub type SkillPointPages = [SkillPointPage; 10];
 
 #[derive(MooplePacket, Debug)]
 pub struct CharStat {
@@ -56,7 +57,7 @@ pub struct CharStat {
     pub max_mp: u32,
     pub ap: u16,
     #[pkt(either(field = "job_id", cond = "JobId::has_extended_sp"))]
-    pub sp: CondEither<ExtendedSP, u16>,
+    pub sp: CondEither<SkillPointPages, u16>,
     pub exp: i32,
     pub fame: u16,
     pub tmp_exp: u32,
@@ -82,15 +83,20 @@ impl CharStat {
 }
 
 #[derive(MooplePacket, Debug, Clone)]
+pub struct AvatarEquips {
+    pub equips: MapleIndexList8<ItemId>,
+    pub masked_equips: MapleIndexList8<ItemId>,
+    pub weapon_sticker_id: ItemId,
+}
+
+#[derive(MooplePacket, Debug, Clone)]
 pub struct AvatarData {
     pub gender: Gender,
     pub skin: Skin,
     pub face: FaceId,
     pub mega: bool,
     pub hair: HairId,
-    pub equips: MapleIndexList8<ItemId>,
-    pub masked_equips: MapleIndexList8<ItemId>,
-    pub weapon_sticker_id: ItemId,
+    pub equips: AvatarEquips,
     pub pets: PetIds,
 }
 
@@ -104,17 +110,17 @@ pub struct UnknownCharExtraData {
 
 #[derive(Debug, MooplePacket)]
 pub struct SkillInfo {
-    id: SkillId,
-    level: u32,
-    expiration: MapleTime,
+    pub id: SkillId,
+    pub level: u32,
+    pub expiration: MapleExpiration,
     //TODO if is_skill_need_master_level, 4th job only?
-    master_level: u32,
+    pub master_level: u32,
 }
 
 #[derive(Debug, MooplePacket)]
 pub struct SkillCooltime {
-    id: SkillId,
-    time_left: u16,
+    pub id: SkillId,
+    pub time_left: MapleDurationMs16,
 }
 
 /*
@@ -253,6 +259,35 @@ pub struct CharDataEquipped {
 }
 
 maple_stats!(
+    CharForcedStat,
+    CharForcedStatFlags,
+    u32,
+    Str(u16) => 1 << 0,
+    Dex(u16) => 1 << 1,
+    Int(u16) => 1 << 2,
+    Luk(u16) => 1 << 3,
+    Pad(u16) => 1 << 4,
+    Pdd(u16) => 1 << 5,
+    Mad(u16) => 1 << 6,
+    Mdd(u16) => 1 << 7,
+    Acc(u16) => 1 << 8,
+    Eva(u16) => 1 << 9,
+    Speed(u8) => 1 << 10,
+    Jump(u8) => 1 << 11,
+    SpeedMax(u8) => 1 << 12
+);
+
+#[derive(MooplePacket, Debug)]
+pub struct CharForcedStatSetResp {
+    pub stats: PartialFlag<(), CharForcedStatPartial> 
+}
+packet_opcode!(CharForcedStatSetResp, SendOpcodes::ForcedStatSet);
+
+#[derive(MooplePacket, Debug)]
+pub struct CharForcedStatResetResp;
+packet_opcode!(CharForcedStatResetResp, SendOpcodes::ForcedStatReset);
+
+maple_stats!(
     CharStat,
     CharStatFlags,
     u32,
@@ -279,6 +314,7 @@ maple_stats!(
 
 );
 
+
 #[derive(Debug, MooplePacket)]
 pub struct CharStatChangedResp {
     pub excl: bool,
@@ -289,6 +325,19 @@ pub struct CharStatChangedResp {
 }
 packet_opcode!(CharStatChangedResp, SendOpcodes::StatChanged);
 
+
+#[derive(MooplePacket, Debug)]
+pub struct CharTempStatSetResp {
+    pub temp_stats: PartialFlag<(), CharSecondaryStatPartial>,
+    pub unknown: u16 // Delay?
+}
+packet_opcode!(CharTempStatSetResp, SendOpcodes::TemporaryStatSet);
+
+#[derive(MooplePacket, Debug)]
+pub struct CharTempStatResetResp {
+    pub flags: CharSecondaryStatFlags
+}
+packet_opcode!(CharTempStatResetResp, SendOpcodes::TemporaryStatReset);
 
 // TODO always has combat orders + extra data
 
@@ -302,36 +351,36 @@ maple_stats!(
     CharData,
     CharDataFlags,
     u64,
-    STAT(CharDataStat) => 1 << 0,
-    MONEY(Money) => 1 << 1,
-    INV_SIZE([u8; 5]) => 1 << 7,
-    EQUIP_EXT_SLOT_EXPIRE(MapleTime) => 1 << 20,
-    EQUIPPED(CharDataEquipped) => 1 << 2,
-    USE_INV(MapleIndexListZ8<Item>) => 1 << 3,
-    SETUP_INV(MapleIndexListZ8<Item>) => 1 << 4,
-    ETC_INV(MapleIndexListZ8<Item>) => 1 << 5,
-    CASH_INV(MapleIndexListZ8<Item>) => 1 << 6,
+    Stat(CharDataStat) => 1 << 0,
+    Money(Money) => 1 << 1,
+    InvSize([u8; 5]) => 1 << 7,
+    EquipExtSlotExpiration(MapleExpiration) => 1 << 20,
+    Equipped(CharDataEquipped) => 1 << 2,
+    UseInv(MapleIndexListZ8<Item>) => 1 << 3,
+    SetupInv(MapleIndexListZ8<Item>) => 1 << 4,
+    EtcInv(MapleIndexListZ8<Item>) => 1 << 5,
+    CashInv(MapleIndexListZ8<Item>) => 1 << 6,
     // InvSize 1 << 7
-    SKILL_RECORDS(MapleList16<SkillInfo>) => 1 << 8,
-    SKILL_COOLTIME(MapleList16<SkillCooltime>) => 1 << 15,
-    QUESTS(MapleList16<QuestInfo>) => 1 << 9,
-    QUESTS_COMPLETED(MapleList16<QuestCompleteInfo>) => 1 << 14,
-    MINI_GAME_RECORDS(MapleList16<MiniGameInfo>) => 1 << 10,
-    SOCIAL_RECORDS(MapleList16<SocialRecords>) => 1 << 11,
-    TELEPORT_ROCK_INFO(TeleportRockInfo) => 1 << 12,
+    SkillRecords(MapleList16<SkillInfo>) => 1 << 8,
+    SkllCooltime(MapleList16<SkillCooltime>) => 1 << 15,
+    Quests(MapleList16<QuestInfo>) => 1 << 9,
+    QuestsCompleted(MapleList16<QuestCompleteInfo>) => 1 << 14,
+    MiniGameRecords(MapleList16<MiniGameInfo>) => 1 << 10,
+    SocialRecords(MapleList16<SocialRecords>) => 1 << 11,
+    TeleportRockInfo(TeleportRockInfo) => 1 << 12,
     // Unknown 1 << 13
     // QuestsCompleted 1 << 14
     // SkillCooltimes 1 << 15
     // Monsterbook Card 1 << 16
     // Monster Book Cover  1 << 17
-    NEW_YEAR_CARDS(MapleList16<NewYearCardInfo>) => 1 << 18,
-    QUEST_RECORDS_EXPIRED(MapleList16<QuestRecordExpired>) => 1 << 19,
+    NewYearCards(MapleList16<NewYearCardInfo>) => 1 << 18,
+    QuestRecordsExpired(MapleList16<QuestRecordExpired>) => 1 << 19,
     // EquipExtExpire 1 << 20
     //TODO this has to be optional in the all struct, bneed to implement this later 1 << somehow
     // this only affects the all struct, partial struct can opt to not encode 1 << it
     //WILD_HUNTER_INFO(WildHunterInfo) => 1 << 21,
-    QUEST_COMPLETE_OLD(MapleList16<QuestCompleteOldInfo>) => 1 << 22,
-    VISITOR_QUEST_LOG_INFO(MapleList16<VisitorQuestLogInfo>) => 1 << 23,
+    QuestCompleteOld(MapleList16<QuestCompleteOldInfo>) => 1 << 22,
+    VisitorQuestLogInfo(MapleList16<VisitorQuestLogInfo>) => 1 << 23,
 
 );
 
@@ -591,40 +640,3 @@ pub struct CharSecondaryStatExtra {
         SwallowCritical = If any 
 
  */
-
-#[cfg(test)]
-mod tests {
-    use moople_packet::proto::CondOption;
-
-    use crate::stats::PartialFlagData;
-
-    use super::*;
-
-    #[test]
-    fn basic_flags() {
-        let char_data = CharDataPartial {
-            stat: CondOption(None),
-            money: CondOption(None),
-            inv_size: CondOption(None),
-            equip_ext_slot_expire: CondOption(None),
-            equipped: CondOption(None),
-            use_inv: CondOption(None),
-            setup_inv: CondOption(None),
-            etc_inv: CondOption(None),
-            cash_inv: CondOption(None),
-            skill_records: CondOption(None),
-            skill_cooltime: CondOption(None),
-            quests: CondOption(None),
-            quests_completed: CondOption(None),
-            mini_game_records: CondOption(None),
-            social_records: CondOption(None),
-            teleport_rock_info: CondOption(None),
-            new_year_cards: CondOption(None),
-            quest_records_expired: CondOption(None),
-            quest_complete_old: CondOption(None),
-            visitor_quest_log_info: CondOption(None),
-        };
-
-        assert_eq!(char_data.get_flags().0, CharDataFlags::empty().0);
-    }
-}

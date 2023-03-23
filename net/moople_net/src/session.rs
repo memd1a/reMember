@@ -1,8 +1,11 @@
 use std::{io, net::SocketAddr};
 
-use crate::codec::{
-    handshake::Handshake,
-    maple_codec::{MapleCodec, MapleFramedCodec, EncodeItem},
+use crate::{
+    codec::{
+        handshake::Handshake,
+        maple_codec::{EncodeItem, MapleCodec, MapleFramedCodec},
+    },
+    service::packet_buffer::PacketBuffer,
 };
 use bytes::BufMut;
 use futures::{SinkExt, StreamExt};
@@ -61,12 +64,20 @@ where
         }
     }
 
-    pub async fn send_raw_packet(&mut self, pkt: MaplePacket) -> NetResult<()> {
+    pub async fn send_packet_buffer(&mut self, buf: &PacketBuffer) -> NetResult<()> {
+        //TODO optimize this to send that in one tcp packet
+        for pkt in buf.packets() {
+            self.send_raw_packet(pkt).await?;
+        }
+        Ok(())
+    }
+
+    pub async fn send_raw_packet(&mut self, data: &[u8]) -> NetResult<()> {
         let buf = self.codec.write_buffer_mut();
         let n = buf.len();
         // Make space for the header
         buf.put_i32(0);
-        buf.put_slice(&pkt.data);
+        buf.put_slice(&data);
 
         // Determine encoded size
         let n = buf.len() - n;
@@ -95,10 +106,7 @@ where
         Ok(())
     }
 
-    pub async fn send_packet<P: EncodePacket + HasOpcode>(
-        &mut self,
-        data: P,
-    ) -> NetResult<()> {
+    pub async fn send_packet<P: EncodePacket + HasOpcode>(&mut self, data: P) -> NetResult<()> {
         self.send_packet_with_opcode(P::OPCODE, data).await
     }
 
@@ -140,8 +148,6 @@ impl MapleSession<TcpStream> {
 mod tests {
     use std::net::{IpAddr, Ipv4Addr};
 
-    use bytes::Bytes;
-    use moople_packet::MaplePacket;
     use turmoil::net::{TcpListener, TcpStream};
 
     use crate::{codec::handshake::Handshake, crypto::RoundKey, MapleSession};
@@ -177,7 +183,7 @@ mod tests {
                 loop {
                     match sess.read_packet().await {
                         Ok(pkt) => {
-                            sess.send_raw_packet(pkt).await?;
+                            sess.send_raw_packet(&pkt.data).await?;
                         }
                         _ => {
                             break;
@@ -193,8 +199,7 @@ mod tests {
             assert_eq!(handshake.version, V);
 
             for data in ECHO_DATA.iter() {
-                sess.send_raw_packet(MaplePacket::from_data(Bytes::from_static(data)))
-                    .await?;
+                sess.send_raw_packet(data).await?;
                 let pkt = sess.read_packet().await?;
                 assert_eq!(pkt.data.as_ref(), *data);
             }

@@ -22,6 +22,18 @@ pub struct PartialFlag<Hdr, FlagData> {
     pub data: FlagData,
 }
 
+impl<Hdr, FlagData> PartialFlag<Hdr, FlagData> {
+    pub fn new(hdr: Hdr, data: FlagData) -> Self {
+        Self { hdr, data }
+    }
+}
+
+impl<FlagData> From<FlagData> for PartialFlag<(), FlagData> {
+    fn from(value: FlagData) -> Self {
+        Self::new((), value)
+    }
+}
+
 impl<'de, Hdr, FlagData> EncodePacket for PartialFlag<Hdr, FlagData>
 where
     Hdr: EncodePacket,

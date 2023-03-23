@@ -1,4 +1,4 @@
-use crate::{error::NetError, NetResult};
+use crate::{error::NetError, NetResult, proto::MapleWrapped};
 
 pub trait NetOpcode: TryFrom<u16> + Into<u16> + Copy + Clone {
     fn get_opcode(v: u16) -> NetResult<Self> {
@@ -12,6 +12,27 @@ pub trait HasOpcode {
     type OP: NetOpcode;
 
     const OPCODE: Self::OP;
+}
+
+#[derive(Debug, Default)]
+pub struct WithOpcode<const OP: u16, T>(pub T);
+impl<const OP: u16, T> HasOpcode for WithOpcode<OP, T> {
+    type OP = u16;
+
+    const OPCODE: Self::OP = OP;
+}
+
+impl<const OP: u16, T: Clone> MapleWrapped for WithOpcode<OP, T> {
+    type Inner = T;
+
+    fn maple_into_inner(&self) -> Self::Inner {
+        //TODO clone is not right
+        self.0.clone()
+    }
+
+    fn maple_from(v: Self::Inner) -> Self {
+        Self(v)
+    }
 }
 
 

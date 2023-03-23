@@ -27,7 +27,9 @@ use moople_packet::{
     proto::{list::MapleIndexList8, time::MapleTime, MapleList8},
     HasOpcode, MaplePacket, MaplePacketReader, MaplePacketWriter,
 };
+use proto95::id::SkillId;
 use proto95::shared::ExceptionLogReq;
+use proto95::shared::char::AvatarEquips;
 use proto95::{
     id::{FaceId, HairId, ItemId, Skin},
     login::{
@@ -153,10 +155,7 @@ impl LoginHandler {
         Ok(())
     }
 
-    async fn handle_exception_log(
-        &mut self,
-        _req: ExceptionLogReq,
-    ) -> anyhow::Result<()> {
+    async fn handle_exception_log(&mut self, _req: ExceptionLogReq) -> anyhow::Result<()> {
         dbg!(&_req);
         Ok(())
     }
@@ -464,11 +463,20 @@ impl LoginHandler {
             .load_inventory_for_character(char_id)
             .await?;
 
-        dbg!(MoopleMigrationKey::new(self.client_key.unwrap(), self.addr));
+        let skills = self
+            .services
+            .character
+            .load_skills(char_id)
+            .await?
+            .into_iter()
+            .map(|skill| (SkillId(skill.id as u32), skill))
+            .collect();
+
+        let client_key = self.client_key.expect("Must have client key");
 
         self.services.session_manager.create_migration_session(
-            MoopleMigrationKey::new(self.client_key.unwrap(), self.addr),
-            MoopleSessionData { acc, char, inv },
+            MoopleMigrationKey::new(client_key, self.addr),
+            MoopleSessionData { acc, char, inv, skills },
         )?;
 
         let addr = self.services.server_info.get_channel_addr(world, channel)?;
@@ -496,14 +504,16 @@ pub fn map_char_to_avatar(char: &character::Model) -> AvatarData {
         mega: true,
         face: FaceId(char.face as u32),
         hair: HairId(char.hair as u32),
-        equips: MapleIndexList8::from(vec![
-            (5, ItemId(1040006)),
-            (6, ItemId(1060006)),
-            (7, ItemId(1072005)),
-            (11, ItemId(1322005)),
-        ]),
-        masked_equips: MapleIndexList8::from(vec![]),
-        weapon_sticker_id: ItemId(0),
+        equips: AvatarEquips {
+            equips: MapleIndexList8::from(vec![
+                (5, ItemId(1040006)),
+                (6, ItemId(1060006)),
+                (7, ItemId(1072005)),
+                (11, ItemId(1322005)),
+            ]),
+            masked_equips: MapleIndexList8::from(vec![]),
+            weapon_sticker_id: ItemId(0),
+        },
         pets: PetIds::default(),
     }
 }

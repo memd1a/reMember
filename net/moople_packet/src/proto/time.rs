@@ -1,6 +1,6 @@
 use std::{fmt::Debug, time::Duration};
 
-use chrono::NaiveDateTime;
+use chrono::{NaiveDateTime, Utc};
 
 use crate::{NetError, NetResult};
 
@@ -116,6 +116,48 @@ impl MapleWrapped for Ticks {
     }
 }
 
+#[derive(Debug)]
+pub struct MapleExpiration(pub Option<MapleTime>);
+
+impl From<Option<NaiveDateTime>> for MapleExpiration {
+    fn from(value: Option<NaiveDateTime>) -> Self {
+        let v: Option<MapleTime> = value.map(|v| v.into());
+        v.into()
+    }
+}
+
+impl From<Option<MapleTime>> for MapleExpiration {
+    fn from(value: Option<MapleTime>) -> Self {
+        Self(value)
+    }
+}
+
+impl MapleExpiration {
+    pub fn new(time: MapleTime) -> Self {
+        Self(Some(time))
+    }
+
+    pub fn never() -> Self {
+        Self(None)
+    }
+
+    pub fn delay(dur: chrono::Duration) -> Self {
+        Self::new((Utc::now() + dur).naive_utc().into())
+    }
+}
+
+impl MapleWrapped for MapleExpiration {
+    type Inner = MapleTime;
+
+    fn maple_into_inner(&self) -> Self::Inner {
+        self.0.unwrap_or(MapleTime(0))
+    }
+
+    fn maple_from(v: Self::Inner) -> Self {
+        Self((v.0 != 0).then_some(v))
+    }
+}
+
 #[derive(Clone, Copy)]
 pub struct DurationMs<T>(pub T);
 
@@ -150,7 +192,10 @@ where
     }
 }
 
-impl<T> From<DurationMs<T>> for Duration where T: Into<u64> {
+impl<T> From<DurationMs<T>> for Duration
+where
+    T: Into<u64>,
+{
     fn from(value: DurationMs<T>) -> Self {
         Duration::from_millis(value.0.into())
     }
@@ -165,7 +210,7 @@ mod tests {
 
     use crate::proto::MapleTryWrapped;
 
-    use super::{MapleTime, MapleDurationMs32};
+    use super::{MapleDurationMs32, MapleTime};
 
     #[test]
     fn conv() {

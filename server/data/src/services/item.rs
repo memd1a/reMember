@@ -1,4 +1,5 @@
 use crate::entities::{equip_item, inventory_slot, item_stack};
+use anyhow::anyhow;
 use itertools::Itertools;
 use num_enum::TryFromPrimitive;
 use proto95::{id::ItemId, shared::inventory::EquippedSlot};
@@ -16,6 +17,7 @@ use super::{
         },
         Inventory,
     },
+    meta::meta_service::MetaService,
     model::item::{EquipItem, EquipStat, StackItem},
 };
 
@@ -41,6 +43,7 @@ pub struct Inventories {
 #[derive(Debug, Clone)]
 pub struct ItemService {
     db: DatabaseConnection,
+    meta: &'static MetaService,
 }
 
 fn map_equip_to_active_model(item: &EquipItem) -> equip_item::ActiveModel {
@@ -76,7 +79,7 @@ fn map_equip_to_active_model(item: &EquipItem) -> equip_item::ActiveModel {
         avoid: Set(stats[EquipStat::Avoid] as i32),
         speed: Set(stats[EquipStat::Speed] as i32),
         jump: Set(stats[EquipStat::Jump] as i32),
-        hands: Set(stats[EquipStat::Hands] as i32),
+        craft: Set(stats[EquipStat::Craft] as i32),
     }
 }
 
@@ -94,15 +97,17 @@ fn map_stack_to_active_model(item: &StackItem) -> item_stack::ActiveModel {
 }
 
 impl ItemService {
-    pub fn new(db: DatabaseConnection) -> Self {
-        Self { db }
+    pub fn new(db: DatabaseConnection, meta: &'static MetaService) -> Self {
+        Self { db, meta }
     }
 
     fn get_eq_item_from_id(&self, item_id: ItemId) -> anyhow::Result<EquipItem> {
-        let mut eq_item = EquipItem::from_item_id(item_id);
-        eq_item.stats[EquipStat::WeaponAtk] = 5;
+        let item_meta = self
+            .meta
+            .get_item_data(item_id)
+            .ok_or_else(|| anyhow!("Invalid item: {item_id:?}"))?;
 
-        Ok(eq_item)
+        Ok(EquipItem::from_item_id(item_id, item_meta))
     }
 
     fn get_stack_item_from_id(&self, item_id: ItemId, quantity: u16) -> anyhow::Result<StackItem> {
@@ -439,6 +444,7 @@ mod tests {
             account::{AccountId, AccountService, Region},
             character::{CharacterCreateDTO, CharacterID, CharacterService, ItemStarterSet},
             helper::intentory::inv::InventoryExt,
+            meta::meta_service::MetaService,
         },
     };
     use proto95::{
@@ -448,14 +454,20 @@ mod tests {
 
     use super::ItemService;
 
+    fn get_mock_meta() -> &'static MetaService {
+        todo!()
+    }
+
     async fn get_svc() -> anyhow::Result<(ItemService, AccountId, CharacterID)> {
         let db = gen_sqlite(crate::SQL_OPT_MEMORY).await?;
 
         let acc = AccountService::new(db.clone());
-        let acc_id = acc.create("test", "hunter3", Region::Europe, true, None).await?;
+        let acc_id = acc
+            .create("test", "hunter3", Region::Europe, true, None)
+            .await?;
 
         let char = CharacterService::new(db.clone());
-        let item_svc = ItemService::new(db.clone());
+        let item_svc = ItemService::new(db.clone(), get_mock_meta());
         let job = JobGroup::Legend;
         let char_id = char
             .create_character(
@@ -479,7 +491,7 @@ mod tests {
             )
             .await?;
 
-        Ok((ItemService::new(db), acc_id, char_id))
+        Ok((item_svc, acc_id, char_id))
     }
 
     #[tokio::test]

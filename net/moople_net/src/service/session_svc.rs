@@ -84,14 +84,14 @@ where
                 _ = ping_interval.tick() => {
                     let ping_packet = handler.get_ping_packet().map_err(SessionError::Session)?;
                     log::info!("Sending ping packet: {:?}", ping_packet.data);
-                    session.send_raw_packet(ping_packet).await?;
+                    session.send_raw_packet(&ping_packet.data).await?;
                 },
                 //Handle broadcast packets
                 p = broadcast_rx.next() => {
                     // note tx is never dropped, so there'll be always a packet here
                     let p = p.unwrap();
                     log::info!("Sending broadcast packet... {}", p.data.len());
-                    session.send_raw_packet(p).await?;
+                    session.send_raw_packet(&p.data).await?;
                 },
                 _ = ct.cancelled() => {
                     break;

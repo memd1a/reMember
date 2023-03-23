@@ -1,23 +1,41 @@
+use moople_net::service::packet_buffer::PacketBuffer;
 use moople_packet::{EncodePacket, HasOpcode, MaplePacketWriter};
 use proto95::{
-    game::mob::{
-        CarnivalTeam, LocalMobData, MobChangeControllerResp, MobEnterFieldResp, MobId, MobInitData,
-        MobLeaveFieldResp, MobLeaveType, MobSummonType, MobTemporaryStatPartial,
-        PartialMobTemporaryStat,
+    game::{
+        mob::{
+            CarnivalTeam, LocalMobData, MobChangeControllerResp, MobDamagedResp, MobEnterFieldResp,
+            MobHPIndicatorResp, MobId, MobInitData, MobLeaveFieldResp, MobLeaveType, MobSummonType,
+            MobTemporaryStatPartial, PartialMobTemporaryStat,
+        },
+        ObjectId,
     },
     shared::{FootholdId, Vec2},
 };
 
-use crate::services::session::session_set::SharedSessionDataRef;
+use crate::services::{meta::meta_service::MobMeta, session::session_set::SharedSessionDataRef};
 
 use super::{Pool, PoolItem};
 
 #[derive(Debug)]
 pub struct Mob {
+    pub meta: MobMeta,
     pub tmpl_id: MobId,
     pub pos: Vec2,
     pub fh: FootholdId,
     pub origin_fh: Option<FootholdId>,
+    pub hp: u32,
+    pub perc: u8,
+}
+
+impl Mob {
+    pub fn damage(&mut self, dmg: u32) {
+        self.hp = self.hp.saturating_sub(dmg);
+        self.perc = ((self.hp * 100) / self.meta.max_hp) as u8;
+    }
+
+    pub fn is_dead(&self) -> bool {
+        self.hp == 0
+    }
 }
 
 impl PoolItem for Mob {
@@ -91,5 +109,34 @@ impl Pool<Mob> {
             session.broadcast_tx.send(pw.into_packet()).await?;
         }
         Ok(())
+    }
+
+    pub async fn attack_mob(
+        &self,
+        id: ObjectId,
+        dmg: u32,
+        buf: &mut PacketBuffer,
+    ) -> anyhow::Result<bool> {
+        // TODO: Locking the whole pool to update a single mob is not right
+        let mut mobs = self.items.write().await;
+        let mob = mobs
+            .get_mut(&id)
+            .ok_or(anyhow::format_err!("Invalid mob"))?;
+        mob.damage(dmg);
+
+        buf.write_packet(MobDamagedResp {
+            id,
+            ty: 0,
+            dec_hp: dmg,
+            hp: mob.hp,
+            max_hp: mob.meta.max_hp,
+        })?;
+
+        buf.write_packet(MobHPIndicatorResp {
+            id,
+            hp_perc: mob.perc,
+        })?;
+
+        Ok(mob.is_dead())
     }
 }

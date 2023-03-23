@@ -1,4 +1,10 @@
-use proto95::{shared::{char::CharacterId, Vec2}, game::{ObjectId, reactor::{ReactorEnterFieldResp, ReactorLeaveFieldResp, ReactorId}}};
+use proto95::{
+    game::{
+        reactor::{ReactorEnterFieldResp, ReactorId, ReactorLeaveFieldResp},
+        ObjectId,
+    },
+    shared::Vec2,
+};
 
 use super::PoolItem;
 
@@ -6,7 +12,7 @@ use super::PoolItem;
 pub struct Reactor {
     pub pos: Vec2,
     pub tmpl_id: ReactorId,
-    pub state: u8
+    pub state: u8,
 }
 
 impl PoolItem for Reactor {
@@ -25,7 +31,7 @@ impl PoolItem for Reactor {
             state: self.state,
             pos: self.pos,
             flipped: false,
-            name: String::new()
+            name: String::new(),
         }
     }
 

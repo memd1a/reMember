@@ -91,6 +91,18 @@ pub fn maple_packet(item: proc_macro::TokenStream) -> proc_macro::TokenStream {
     input.to_token_stream().into()
 }
 
+#[proc_macro_derive(MoopleEncodePacket, attributes(pkt))]
+pub fn encode_packet(item: proc_macro::TokenStream) -> proc_macro::TokenStream {
+    let derive_input = syn::parse_macro_input!(item as syn::DeriveInput);
+
+    let input = match MaplePacket::from_derive_input(&derive_input) {
+        Ok(input) => input,
+        Err(err) => return err.write_errors().into(),
+    };
+
+    EncodePacket(input).to_token_stream().into()
+}
+
 fn add_trait_bounds(mut generics: Generics, bound: TypeParamBound) -> Generics {
     for param in &mut generics.params {
         if let GenericParam::Type(ref mut type_param) = *param {
@@ -226,7 +238,22 @@ impl MaplePacket {
             .and_then(|_| self.gen_len(tokens))
             .unwrap();
     }
+
+    fn gen_encode_len(&self, tokens: &mut proc_macro2::TokenStream) {
+        self.gen_encode(tokens)
+            .and_then(|_| self.gen_len(tokens))
+            .unwrap();
+    }
 }
+
+struct EncodePacket(MaplePacket);
+
+impl ToTokens for EncodePacket {
+    fn to_tokens(&self, tokens: &mut proc_macro2::TokenStream) {
+        self.0.gen_encode_len(tokens);
+    }
+}
+
 
 impl ToTokens for MaplePacket {
     fn to_tokens(&self, tokens: &mut proc_macro2::TokenStream) {

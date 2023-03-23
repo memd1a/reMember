@@ -2,12 +2,14 @@ use binrw::{BinRead, BinWrite};
 
 use crate::crypto::WzCrypto;
 
-use super::{canvas::WzCanvas, prop::WzProperty, WzUOLStr};
+use super::{canvas::WzCanvas, prop::{WzProperty, WzUOL, WzVector2D}, WzUOLStr};
 
 #[derive(Debug)]
 pub enum WzObject {
     Property(WzProperty),
     Canvas(WzCanvas),
+    UOL(WzUOL),
+    Vec2(WzVector2D)
     /*
         TODO:
 
@@ -30,7 +32,8 @@ impl BinRead for WzObject {
         Ok(match ty_name {
             "Property" => Self::Property(WzProperty::read_options(reader, endian, (args,))?),
             "Canvas" => Self::Canvas(WzCanvas::read_options(reader, endian, (args,))?),
-            //"Shape2D#Vector2D" => Ok(WzObject::Vector2D(f.bin_read()?)),
+            "UOL" => Self::UOL(WzUOL::read_options(reader, endian, (args,))?),
+            "Shape2D#Vector2D" => Self::Vec2(WzVector2D::read_options(reader, endian, ())?),
             // TODO: make this a real error
             _ => {
                 panic!("Invalid obj: {ty_name}")

@@ -44,7 +44,7 @@ impl Services {
     pub fn new(db: DatabaseConnection, servers: impl IntoIterator<Item = ServerInfo>, meta: &'static MetaService) -> Self {
         Self {
             account: AccountService::new(db.clone()),
-            item: ItemService::new(db.clone()),
+            item: ItemService::new(db.clone(), meta),
             character: CharacterService::new(db),
             session_manager: GameSessionManager::new(Duration::from_secs(30)),
             server_info: ServerService::new(servers),

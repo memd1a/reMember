@@ -18,8 +18,8 @@ pub const CHAR_STATS: [&str; 25] = [
     "map_id",
     "buddy_capacity",
     "fame",
-    "ap",
     "sp",
+    "ap",
     "job",
     "equip_slots",
     "use_slots",
@@ -52,7 +52,7 @@ pub const ITEM_STATS: [&str; 17] = [
     "magic_def",
     "accuracy",
     "avoid",
-    "hands",
+    "craft",
     "speed",
     "jump",
 ];

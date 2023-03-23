@@ -7,7 +7,9 @@ edition = "2021"
 
 [dependencies]
 anyhow = "1.0.69"
+array-init = "2.1.0"
 async-trait = "0.1.64"
+clap = { version = "4.1.8", features = ["derive"] }
 data = { version = "0.1.0", path = "../data" }
 game = { version = "0.1.0", path = "../game" }
 log = "0.4.17"

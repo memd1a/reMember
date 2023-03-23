@@ -1,26 +1,30 @@
-use std::ops::Add;
+use std::{ops::Add, time::Duration};
 
-use moople_packet::proto::time::MapleTime;
+use moople_packet::proto::time::MapleExpiration;
 use proto95::{
     game::{
         drop::{
-            DropEnterFieldResp, DropEnterType, DropLeaveFieldResp, DropLeaveType, DropOwnerType,
+            DropEnterFieldResp, DropEnterType, DropLeaveFieldResp, DropLeaveType, DropOwner,
             DropType,
         },
+        mob::MobId,
         ObjectId,
     },
     id::ItemId,
     shared::{char::CharacterId, Vec2},
 };
 
-use super::PoolItem;
+use crate::services::session::session_set::SessionSet;
+
+use super::{Pool, PoolItem};
 
 #[derive(Debug)]
 pub struct Drop {
-    pub owner: CharacterId,
+    pub owner: DropOwner,
     pub pos: Vec2,
     pub start_pos: Vec2,
     pub value: DropTypeValue,
+    pub quantity: usize
 }
 
 #[derive(Debug)]
@@ -49,26 +53,27 @@ impl PoolItem for Drop {
     type LeaveParam = DropLeaveParam;
 
     fn get_enter_pkt(&self, id: Self::Id) -> Self::EnterPacket {
-        dbg!(self);
         let (drop_type, expiration) = match self.value {
-            DropTypeValue::Item(item) => {
-                let expiration = chrono::Utc::now()
-                    .naive_utc()
-                    .add(chrono::Duration::seconds(60));
-                (DropType::Item(item), Some(MapleTime::from(expiration)))
-            }
+            DropTypeValue::Item(item) => (
+                DropType::Item(item),
+                Some(MapleExpiration::delay(chrono::Duration::seconds(60))),
+            ),
             DropTypeValue::Mesos(mesos) => (DropType::Money(mesos), None),
         };
 
+        let start_pos = (
+            self.start_pos.add((0, -100).into()),
+            Duration::from_millis(1000).into(),
+        );
+
         DropEnterFieldResp {
-            enter_type: DropEnterType::OnFoothold,
+            enter_type: DropEnterType::Create,
             id,
             drop_type,
-            owner_id: self.owner,
-            drop_owner_type: DropOwnerType::UserOwner,
+            drop_owner: self.owner.clone(),
             pos: self.pos,
             src_id: 0,
-            start_pos: None.into(),
+            start_pos: Some(start_pos).into(),
             drop_expiration: expiration.into(),
             by_pet: false,
             u1_flag: false,
@@ -92,5 +97,51 @@ impl PoolItem for Drop {
             id,
             pickup_id: pickup_id.into(),
         }
+    }
+}
+
+impl Pool<Drop> {
+    pub async fn add_mob_drops(
+        &self,
+        killed_mob: MobId,
+        pos: Vec2,
+        killer: CharacterId,
+        sessions: &SessionSet,
+    ) -> anyhow::Result<()> {
+        let Some(drops) = self.meta.get_drops_for_mob(killed_mob)  else {
+            return Ok(())
+        };
+
+        let money = drops.get_money_drop(&mut rand::thread_rng());
+        let items = drops.get_item_drops(&mut rand::thread_rng());
+        if money > 0 {
+            self.add(
+                Drop {
+                    owner: DropOwner::User(killer),
+                    pos,
+                    start_pos: pos,
+                    value: DropTypeValue::Mesos(money),
+                    quantity: 1
+                },
+                &sessions,
+            )
+            .await?;
+        }
+
+        for (item, quantity) in items {
+            self.add(
+                Drop {
+                    owner: DropOwner::User(killer),
+                    pos,
+                    start_pos: pos,
+                    value: DropTypeValue::Item(item),
+                    quantity
+                },
+                sessions,
+            )
+            .await?;
+        }
+
+        Ok(())
     }
 }

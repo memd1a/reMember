@@ -30,14 +30,14 @@ impl From<&account::Model> for AccountInfo {
             gender: model.gender.as_ref().into(),
             grade_code: gm,
             sub_grade_code: gm,
-            is_test_acc: false,
+            is_test_acc: model.tester,
             country_id: model.country as u8,
             name: model.username.clone(),
             purchase_exp: 0,
             chat_block_reason: 0,
             chat_block_date: MapleTime::zero(),
             registration_date: MapleTime::try_from(model.created_at).unwrap(),
-            num_chars: 3,
+            num_chars: model.character_slots as u32,
         }
     }
 }

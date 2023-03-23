@@ -98,11 +98,12 @@ impl AccountService {
             country: Set(region as u8 as i32),
             gm_level: Set(0),
             last_selected_world: Set(0),
-            character_slots: Set(0),
+            character_slots: Set(3),
             nx_credit: Set(0),
             maple_points: Set(0),
             nx_prepaid: Set(0),
             gender: Set(gender),
+            tester: Set(false),
             ..Default::default()
         };
 

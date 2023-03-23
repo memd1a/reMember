@@ -222,7 +222,7 @@ pub struct MobMoveReq {
 packet_opcode!(MobMoveReq, RecvOpcodes::MobMove);
 
 #[derive(MooplePacket, Debug)]
-pub struct MoveCtrlAckResp {
+pub struct MobMoveCtrlAckResp {
     pub id: ObjectId,
     pub ctrl_sn: u16,
     pub next_atk_possible: bool,
@@ -230,7 +230,7 @@ pub struct MoveCtrlAckResp {
     pub skill_id: u8,
     pub slv: u8,
 }
-packet_opcode!(MoveCtrlAckResp, SendOpcodes::MobCtrlAck);
+packet_opcode!(MobMoveCtrlAckResp, SendOpcodes::MobCtrlAck);
 
 #[derive(MooplePacket, Debug)]
 pub struct MobDamagedResp {
@@ -266,12 +266,12 @@ pub struct MobOnSuspendReset {
 packet_opcode!(MobOnSuspendReset, SendOpcodes::MobSuspendReset);
 
 #[derive(MooplePacket, Debug)]
-pub struct MobOnAffected {
+pub struct MobAffectedResp {
     pub id: ObjectId,
     pub skill_id: u32,
     pub start_delay: MapleDurationMs16,
 }
-packet_opcode!(MobOnAffected, SendOpcodes::MobAffected);
+packet_opcode!(MobAffectedResp, SendOpcodes::MobAffected);
 
 #[derive(MooplePacket, Debug)]
 pub struct MobSpecialEffectBySkillResp {

@@ -136,7 +136,7 @@ pub struct WzOffsetStr {
     pub offset: i32,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum WzStr {
     ASCII(String),
     Unicode(Vec<u16>),
@@ -279,7 +279,7 @@ where
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct WzOffset(pub u32);
 
 impl BinRead for WzOffset {

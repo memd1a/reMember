@@ -1,7 +1,7 @@
 use std::{borrow::Cow, collections::HashMap, fmt};
 
 use convert_case::{Case, Casing};
-use quote::{format_ident, __private::TokenStream, IdentFragment, ToTokens};
+use quote::{format_ident, IdentFragment, ToTokens, __private::TokenStream};
 
 use crate::ha_xml::{HaXmlDir, HaXmlNumericDir, HaXmlValue};
 
@@ -62,30 +62,6 @@ impl SchemaValue {
         }
     }
 
-    pub fn to_flat_buf_type(&self) -> &str {
-        match self {
-            SchemaValue::Float => "float",
-            SchemaValue::Int => "int",
-            SchemaValue::String => "string",
-            SchemaValue::Vec2 => "Vec2",
-            SchemaValue::Struct(name) => name.as_str(),
-            SchemaValue::NumericDir(name) => name.as_str(),
-            SchemaValue::Optional(opt) => opt.to_flat_buf_type(),
-        }
-    }
-
-    pub fn to_capnp_type(& self) -> & str {
-        match self {
-            SchemaValue::Float => "Float32",
-            SchemaValue::Int => "Int32",
-            SchemaValue::String => "Text",
-            SchemaValue::Vec2 => "Vec2",
-            SchemaValue::Struct(name) => name.as_str(),
-            SchemaValue::NumericDir(name) => name.as_str(),
-            SchemaValue::Optional(opt) => opt.to_capnp_type(),
-        }
-    }
-
     pub fn to_rust_type_token(&self) -> TokenStream {
         match self {
             SchemaValue::Float => quote::quote!(f32),
@@ -93,14 +69,18 @@ impl SchemaValue {
             SchemaValue::String => quote::quote!(String),
             SchemaValue::Vec2 => quote::quote!(Vec2),
             SchemaValue::Struct(name) => {
-                let id = format_ident!("{name}");
+                let id = if name.parse::<usize>().is_ok() {
+                    format_ident!("_{name}")
+                } else {
+                    format_ident!("{name}")
+                };
                 quote::quote!(#id)
             }
             SchemaValue::NumericDir(name) => {
                 let id = format_ident!("{name}");
                 quote::quote!(BTreeMap<i64, #id>)
-            } 
-         
+            }
+
             SchemaValue::Optional(opt) => {
                 let ty = opt.to_rust_type_token();
                 quote::quote!(Option<#ty>)
@@ -110,11 +90,21 @@ impl SchemaValue {
 }
 
 fn fmt_type_name(s: &str) -> String {
-    s.to_case(Case::Pascal)
+    let s = s.to_case(Case::Pascal);
+    if s.parse::<usize>().is_ok() {
+        format!("_{s}")   
+    } else {
+        s
+    }
 }
 
 fn fmt_field_name(s: &str) -> String {
-    s.to_case(Case::Snake)
+    let s = s.to_case(Case::Snake);
+    if s.parse::<usize>().is_ok() {
+        format!("_{s}")   
+    } else {
+        s
+    }
 }
 
 #[derive(Debug)]
@@ -135,11 +125,10 @@ impl SchemaStruct {
 
         // Add new keys
         for (k, mut v) in other.0.into_iter() {
-            self.0.entry(k)
-                .or_insert_with(|| {
-                    v.make_optional();
-                    v
-                });
+            self.0.entry(k).or_insert_with(|| {
+                v.make_optional();
+                v
+            });
         }
 
         Ok(())
@@ -153,45 +142,6 @@ impl SchemaStruct {
         }
 
         Self(fields)
-    }
-
-    pub fn fmt_capnp_struct(&self, name: &str, mut w: impl fmt::Write) -> fmt::Result {
-        let name = fmt_type_name(name);
-        writeln!(w, "struct {name} {{")?;
-        for (i, (name, val)) in self.0.iter().enumerate() {
-            let name = fmt_field_name(name);
-            let ty = val.to_capnp_type();
-            writeln!(w, "\t{name} @{i}: {ty};")?;
-        }
-        writeln!(w, "}}")?;
-
-        Ok(())
-    }
-
-    pub fn fmt_flat_buf_struct(&self, name: &str, mut w: impl fmt::Write) -> fmt::Result {
-        let name = fmt_type_name(name);
-        writeln!(w, "struct {name} {{")?;
-        for (name, val) in self.0.iter() {
-            let name = fmt_field_name(name);
-            let ty = val.to_flat_buf_type();
-            writeln!(w, "\t{name}: {ty};")?;
-        }
-        writeln!(w, "}}")?;
-
-        Ok(())
-    }
-
-    pub fn fmt_flat_buf_table(&self, name: &str, mut w: impl fmt::Write) -> fmt::Result {
-        let name = fmt_type_name(name);
-        writeln!(w, "table {name} {{")?;
-        for (name, val) in self.0.iter() {
-            let name = fmt_field_name(name);
-            let ty = val.to_flat_buf_type();
-            writeln!(w, "\t{name}: {ty};")?;
-        }
-        writeln!(w, "}}")?;
-
-        Ok(())
     }
 
     pub fn fmt_rust_struct(&self, name: &str, mut w: impl fmt::Write) -> fmt::Result {
@@ -211,25 +161,26 @@ impl SchemaStruct {
     pub fn impl_try_from_ha_xml(&self, name: &str) -> String {
         fn fmt_name(name: &str) -> impl IdentFragment + ToTokens {
             let name_ident = fmt_field_name(name);
-            if ["type", "struct"].iter().any(|&s| s == name_ident) {
+            if ["type", "struct", "move"].iter().any(|&s| s == name_ident) {
                 format_ident!("_{}", name_ident)
             } else {
                 format_ident!("{}", name_ident)
             }
         }
 
+        let ty_name = fmt_type_name(name);
+        dbg!(&name);
+        dbg!(fmt_type_name(&name));
+        dbg!(&ty_name);
+        let name_ident = format_ident!("{}", ty_name);
 
-        let name = fmt_type_name(name);
-        let name_ident = format_ident!("{}", name);
-
-        let fields = self.0.iter().map(|(name, v)|  {
+        let fields = self.0.iter().map(|(name, v)| {
             let name_ident = fmt_name(name);
             let ty = v.to_rust_type_token();
             quote::quote!(pub #name_ident: #ty)
         });
 
-
-        let map_fields = self.0.iter().map(|(name, v)|  {
+        let map_fields = self.0.iter().map(|(name, v)| {
             let name_ident = fmt_name(name);
 
             let val = if v.is_optional() {
@@ -327,29 +278,10 @@ impl Schema {
         Ok(())
     }
 
-    pub fn fmt_flat_buf(&self, mut w: impl fmt::Write) -> fmt::Result {
-        for (key, val) in self.schema_structs.iter() {
-            if val.has_optional() {
-                val.fmt_flat_buf_table(key, &mut w)?;
-            } else {
-                val.fmt_flat_buf_struct(key, &mut w)?;
-            }
-        }
-        Ok(())
-    }
-
-    pub fn fmt_capnp(&self, mut w: impl fmt::Write) -> fmt::Result {
-        for (key, val) in self.schema_structs.iter() {
-            val.fmt_capnp_struct(key, &mut w)?;
-        }
-        Ok(())
-    }
-
     pub fn fmt_rust(&self, mut w: impl fmt::Write) -> fmt::Result {
         writeln!(w, "use std::collections::BTreeMap;")?;
         writeln!(w, "use crate::ha_xml::HaXmlValue;")?;
         writeln!(w, "pub type Seat = i64;")?;
-
 
         for (key, val) in self.schema_structs.iter() {
             writeln!(w, "{}", val.impl_try_from_ha_xml(key))?;

@@ -2,7 +2,7 @@ use bytes::BufMut;
 use moople_derive::MooplePacket;
 use moople_packet::{
     maple_packet_enum,
-    proto::{time::MapleTime, DecodePacket, EncodePacket, PacketLen, option::MapleOption8, CondOption},
+    proto::{time::{MapleTime, MapleExpiration}, DecodePacket, EncodePacket, PacketLen, option::MapleOption8, CondOption},
     NetResult, mark_maple_bit_flags,
 };
 
@@ -63,7 +63,7 @@ pub struct PetItemInfo {
     pub level: u8,
     pub tameness: u16,
     pub fullness: u8, /* repleteness */
-    pub expiration_time: MapleTime, /* dateDead */
+    pub expiration: MapleExpiration, /* dateDead */
     pub attribute1: u16, /* PetAttribute  seems to be only hasStats 2^0*/
     pub skill: u16,
     pub remain_life: u32,
@@ -101,7 +101,7 @@ pub struct EquipAllStats {
 pub struct ItemInfo {
     pub item_id: ItemId,
     pub cash_id: MapleOption8<u64>,
-    pub expiration: MapleTime,
+    pub expiration: MapleExpiration,
 }
 
 impl ItemInfo {
@@ -117,7 +117,7 @@ pub struct ItemPetData {
     pub level: u8,
     pub tameness: u16,
     pub fullness: u8,
-    pub expiration_time: MapleTime,
+    pub expiration: MapleExpiration,
     pub attribute1: u16,
     pub skill: u16,
     pub remain_life: u32,

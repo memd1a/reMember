@@ -1,5 +1,5 @@
 use proto95::{
-    id::{job_id::JobGroup, FaceId, HairId, ItemId, Skin, MapId},
+    id::{job_id::JobGroup, FaceId, HairId, ItemId, MapId, Skin},
     login::char::{DeleteCharResult, SelectCharResultCode},
     shared::Gender,
 };
@@ -10,6 +10,7 @@ use crate::{
     entities::{
         account,
         character::{ActiveModel, Column, Entity, Model},
+        skill,
     },
 };
 
@@ -68,7 +69,7 @@ impl CharacterCreateDTO {
     }
     pub fn validate(&self) -> anyhow::Result<()> {
         Ok(())
-/*  de-uglify and test this
+        /*  de-uglify and test this
         let job = self.job_group;
         let _face = check_contains(job.get_starter_face(), self.face, "Face ID")?;
         let _hair = check_contains(job.get_starter_hair(), self.hair, "Hair")?;
@@ -153,7 +154,7 @@ impl CharacterService {
         &self,
         acc_id: i32,
         create: CharacterCreateDTO,
-        item_svc: &ItemService
+        item_svc: &ItemService,
     ) -> anyhow::Result<CharacterID> {
         create.validate()?;
 
@@ -162,7 +163,7 @@ impl CharacterService {
         }
 
         let job = create.job_group;
-        let map_id = MapId::AMHERST.0 as i32;//job.get_start_map().0 as i32;
+        let map_id = MapId::AMHERST.0 as i32; //job.get_start_map().0 as i32;
         let job = job.get_noob_job_id() as u32;
 
         let char = ActiveModel {
@@ -194,14 +195,15 @@ impl CharacterService {
             mesos: Set(50_000),
             fame: Set(0),
             ap: Set(0),
-            sp: Set(0),
+            sp: Set(10),
             spawn_point: Set(0),
             ..Default::default()
         };
 
         let char_id = Entity::insert(char).exec(&self.db).await?.last_insert_id;
-        item_svc.create_starter_set(char_id, create.starter_set).await?;
-
+        item_svc
+            .create_starter_set(char_id, create.starter_set)
+            .await?;
 
         Ok(char_id)
     }
@@ -253,5 +255,12 @@ impl CharacterService {
             return Ok(SelectCharResultCode::UnknownErr);
         }
         Ok(SelectCharResultCode::Success)
+    }
+
+    pub async fn load_skills(&self, id: CharacterID) -> anyhow::Result<Vec<skill::Model>> {
+        Ok(skill::Entity::find()
+            .filter(skill::Column::CharId.eq(id))
+            .all(&self.db)
+            .await?)
     }
 }

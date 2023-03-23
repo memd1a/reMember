@@ -265,7 +265,7 @@ impl HaXmlValue {
                             "int" | "short" => HaXmlValue::Int(value.parse()?),
                             "string" => HaXmlValue::String(value),
                             "float" => HaXmlValue::Float(value.parse()?),
-                            "canvas" => continue,
+                            "canvas" | "uol" => continue,
                             _ => anyhow::bail!("Unsupported value: {name} - {val_ty}"),
                         }
                     };

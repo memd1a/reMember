@@ -26,6 +26,7 @@ enum Account {
     NxCredit,
     NxPrepaid,
     MaplePoints,
+    Tester
 }
 
 #[derive(Iden)]
@@ -46,6 +47,8 @@ enum Character {
     CreatedAt,
     LastLoginAt,
     Gender,
+    SkillPoints,
+    PlayTime
 }
 
 #[derive(Iden)]
@@ -102,6 +105,18 @@ enum InventorySlot {
     PetItemId,
 }
 
+#[derive(Iden)]
+enum Skill {
+    Table,
+    Id,
+    CharId,
+    SkillId,
+    SkillLevel,
+    MasterLevel,
+    ExpiresAt,
+    Cooldown,
+}
+
 #[derive(DeriveMigrationName)]
 pub struct Migration {
     acc_table: MoopleTbl,
@@ -111,6 +126,7 @@ pub struct Migration {
     stack_item_table: MoopleTbl,
     pet_item_table: MoopleTbl,
     inv_slot_table: MoopleTbl,
+    skill_table: MoopleTbl,
 }
 
 impl Default for Migration {
@@ -141,6 +157,7 @@ impl Default for Migration {
                 moople_size(Account::NxCredit),
                 moople_size(Account::NxPrepaid),
                 moople_size(Account::MaplePoints),
+                moople_bool(Account::Tester)
             ],
             [],
         );
@@ -153,6 +170,8 @@ impl Default for Migration {
                 created_at(Character::CreatedAt),
                 date_time(Character::LastLoginAt),
                 moople_gender_col(Character::Gender).not_null().to_owned(),
+                moople_skill_points(Character::SkillPoints),
+                moople_int(Character::PlayTime)
             ]),
             [Ref::ownership(Character::AccId, &acc_table)],
         );
@@ -226,6 +245,20 @@ impl Default for Migration {
                 Ref::opt(InventorySlot::PetItemId, &item_pet_table),
             ],
         );
+
+        let skill_table = MoopleTbl::new(
+            Skill::Table,
+            Skill::Id,
+            [
+                moople_id(Skill::SkillId),
+                moople_int(Skill::SkillLevel),
+                moople_int(Skill::MasterLevel),
+                date_time(Skill::ExpiresAt),
+                date_time(Skill::Cooldown),
+            ],
+            [Ref::ownership(Skill::CharId, &char_table)],
+        );
+
         Self {
             acc_table,
             char_table,
@@ -234,6 +267,7 @@ impl Default for Migration {
             stack_item_table: item_stack_table,
             pet_item_table: item_pet_table,
             inv_slot_table,
+            skill_table,
         }
     }
 }
@@ -248,6 +282,7 @@ impl Migration {
             &self.pet_item_table,
             &self.stack_item_table,
             &self.inv_slot_table,
+            &self.skill_table,
         ]
         .into_iter()
     }

@@ -2,8 +2,9 @@ use std::ops::RangeInclusive;
 
 use moople_derive::MooplePacket;
 
-#[derive(Debug, MooplePacket, PartialEq, PartialOrd, Eq, Clone, Copy, Default)]
-pub struct ItemId(pub u32);
+use crate::moople_id;
+
+moople_id!(ItemId, u32);
 
 impl ItemId {
     pub fn is_arrow_for_bow(&self) -> bool {

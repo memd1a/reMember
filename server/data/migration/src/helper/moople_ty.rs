@@ -15,6 +15,15 @@ pub fn moople_gender_ty() -> TypeCreateStatement {
         .to_owned()
 }
 
+pub fn moople_skill_points(id: impl IntoIden) -> ColumnDef {
+    const PAGES: u32 = 10;
+    ColumnDef::new(id)
+        .binary()
+        .binary_len(PAGES * 2)
+        .not_null()
+        .to_owned()
+}
+
 pub fn moople_gender_col(id: impl IntoIden) -> ColumnDef {
     ColumnDef::new(id)
         .enumeration(Gender::GenderTy, [Gender::Male, Gender::Female])

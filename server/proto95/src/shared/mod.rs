@@ -1,3 +1,4 @@
+pub mod skill;
 pub mod char;
 pub mod inventory;
 pub mod item;

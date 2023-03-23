@@ -1,21 +1,10 @@
 use std::ops::RangeInclusive;
 use moople_packet::proto::wrapped::MapleWrapped;
 
+use crate::moople_id;
 
-#[derive(Debug, PartialEq, Eq, PartialOrd, Clone, Copy, Default, Hash)]
-pub struct MapId(pub u32);
 
-impl MapleWrapped for MapId {
-    type Inner = u32;
-
-    fn maple_into_inner(&self) -> Self::Inner {
-        self.0
-    }
-
-    fn maple_from(v: Self::Inner) -> Self {
-        Self(v)
-    }
-}
+moople_id!(MapId, u32);
 
 impl MapId {
     pub fn is_maple_island(&self) -> bool {

@@ -1,3 +1,4 @@
+pub mod tree;
 use binrw::{binrw, NullString};
 
 use crate::{
@@ -17,7 +18,7 @@ pub struct WzHeader {
 
 #[binrw]
 #[brw(little, import_raw(crypto: &WzCrypto))]
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct WzDir {
     #[brw(args(crypto))]
     pub entries: WzVec<WzDirNode>,
@@ -25,7 +26,7 @@ pub struct WzDir {
 
 #[binrw]
 #[brw(little, import(crypto: &WzCrypto))]
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct WzImgHeader {
     #[brw(args(crypto))]
     pub name: WzStr,
@@ -37,7 +38,7 @@ pub struct WzImgHeader {
 
 #[binrw]
 #[brw(little, import(crypto: &WzCrypto))]
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct WzDirHeader {
     #[brw(args(crypto))]
     pub name: WzStr,
@@ -47,9 +48,20 @@ pub struct WzDirHeader {
     pub offset: WzOffset,
 }
 
+impl WzDirHeader {
+    pub fn root(root_size: usize) -> Self {
+        Self {
+            name: WzStr::ASCII("Root".to_string()),
+            blob_size: WzInt(root_size as i32),
+            checksum: WzInt(1),
+            offset: WzOffset(2)
+        }
+    }
+}
+
 #[binrw]
 #[brw(little, import(crypto: &WzCrypto))]
-#[derive(Debug)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum WzDirNode {
     //01 XX 00 00 00 00 00 OFFSET (4 bytes)
     #[br(magic(1u8))]

@@ -1,27 +1,14 @@
-use bytes::BufMut;
-use moople_derive::MooplePacket;
+use moople_derive::{MoopleEncodePacket, MooplePacket};
 use moople_packet::{
     maple_enum_code, maple_packet_enum,
-    proto::{DecodePacket, EncodePacket, MapleList8, PacketLen, time::MapleDurationMs16},
+    proto::{time::MapleDurationMs16, DecodePacket, MapleList8, PacketLen},
     NetResult,
 };
 
 use super::{Rect, Vec2};
 
-#[derive(Debug)]
-pub struct KeyPadState(Vec<u8>);
-
-impl EncodePacket for KeyPadState {
-    fn encode_packet<B: BufMut>(
-        &self,
-        pw: &mut moople_packet::MaplePacketWriter<B>,
-    ) -> NetResult<()> {
-        pw.write_u8((self.0.len() * 2) as u8);
-        u8::encode_packet_n(&self.0, pw)?;
-
-        Ok(())
-    }
-}
+#[derive(Debug, MoopleEncodePacket)]
+pub struct KeyPadState(u8, Vec<u8>);
 
 impl<'de> DecodePacket<'de> for KeyPadState {
     fn decode_packet(pr: &mut moople_packet::MaplePacketReader<'de>) -> NetResult<Self> {
@@ -31,15 +18,7 @@ impl<'de> DecodePacket<'de> for KeyPadState {
             .map(|_| pr.read_u8())
             .collect::<NetResult<Vec<_>>>()?;
 
-        Ok(Self(state))
-    }
-}
-
-impl PacketLen for KeyPadState {
-    const SIZE_HINT: Option<usize> = None;
-
-    fn packet_len(&self) -> usize {
-        1 + self.0.len()
+        Ok(Self(n as u8, state))
     }
 }
 

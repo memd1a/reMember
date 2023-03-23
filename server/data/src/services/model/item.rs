@@ -2,13 +2,14 @@ use std::ops::{Deref, DerefMut, RangeInclusive};
 
 use chrono::NaiveDateTime;
 use enum_map::{enum_map, Enum, EnumMap};
-use moople_packet::proto::time::MapleTime;
+use moople_packet::proto::time::{MapleExpiration, MapleTime};
 use proto95::{
     id::ItemId,
     shared::item::{self as proto_item},
 };
+use rand::Rng;
 
-use crate::entities::{equip_item, item_stack};
+use crate::{entities::{equip_item, item_stack}, services::meta::meta_service::{ItemMeta, get_equip_stats}};
 
 #[derive(Debug, Enum, Clone)]
 pub enum EquipStat {
@@ -24,7 +25,7 @@ pub enum EquipStat {
     MagicDef,
     Accuracy,
     Avoid,
-    Hands,
+    Craft,
     Speed,
     Jump,
 }
@@ -70,7 +71,6 @@ impl ItemInfo {
 }
 
 #[derive(Debug, Clone)]
-
 pub struct EquipItem {
     pub info: ItemInfo,
     pub level: u8,
@@ -125,12 +125,18 @@ impl DerefMut for EquipItem {
 }
 
 impl EquipItem {
-    pub fn from_item_id(item_id: ItemId) -> Self {
+
+
+
+    pub fn from_item_id(item_id: ItemId, meta: ItemMeta) -> Self {
+        let mut rng = rand::thread_rng();
+        let stats = get_equip_stats(meta).map(|_, v| rng.gen_range(v.wrapping_sub(2)..=v));
+
         Self {
             info: ItemInfo::from_id(item_id),
             level: 0,
-            stats: EquipStats::default(),
-            slots: 0,
+            stats,
+            slots: meta.slot_max as u8,
             hammers_used: 0,
             level_info: None,
         }
@@ -206,45 +212,13 @@ impl StackItem {
     }
 }
 
-fn map_expiration(dt: Option<NaiveDateTime>) ->  MapleTime {
-    dt.map(MapleTime::from).unwrap_or(MapleTime(0))
-}
-
- /* 
-impl From<&equip_item::Model> for proto_item::EquipItemInfo {
-    fn from(value: &equip_item::Model) -> Self {
-
-
-        Self {
-            info: proto_item::ItemInfo {
-                item_id: ItemId(value.item_id as u32),
-                cash_id: value.cash_id.map(|v| v as u64).into(),
-                expiration: map_expiration(value.expires_at)
-            },
-            stats: todo!(),
-            lvl_up_ty: todo!(),
-            lvl: todo!(),
-            exp: todo!(),
-            durability: todo!(),
-            hammer_count: todo!(),
-            grade: todo!(),
-            stars: todo!(),
-            options: todo!(),
-            sockets: todo!(),
-            sn: value.id as u64,
-            time_stamp: MapleTime::permanent(),
-            prev_bonus_exp_rate: -1,
-        }
-    }
-}*/
-
 impl From<&EquipItem> for proto_item::EquipItemInfo {
     fn from(value: &EquipItem) -> Self {
         proto_item::EquipItemInfo {
             info: proto_item::ItemInfo {
                 item_id: value.item_id,
                 cash_id: value.cash_id.into(),
-                expiration: map_expiration(value.expiration)
+                expiration: value.expiration.into(),
             },
             stats: proto_item::EquipAllStats {
                 remaining_upgrade_slots: value.slots,
@@ -283,13 +257,11 @@ fn map_eq_stats(stats: &EquipStats) -> proto95::shared::item::EquipStats {
         mdef: stats[EquipStat::MagicDef],
         accuracy: stats[EquipStat::Accuracy],
         avoid: stats[EquipStat::Avoid],
-        craft: /*stats[EquipStat::Craft] as u16,*/ 0,//TODO !!
-        speed: stats[EquipStat::Speed] + 100,
-        jump: stats[EquipStat::Jump] + 100,
+        craft: stats[EquipStat::Craft],
+        speed: stats[EquipStat::Speed],
+        jump: stats[EquipStat::Jump],
     }
 }
-
-
 
 impl From<&StackItem> for proto_item::ItemStackData {
     fn from(value: &StackItem) -> Self {
@@ -297,12 +269,12 @@ impl From<&StackItem> for proto_item::ItemStackData {
             info: proto_item::ItemInfo {
                 item_id: value.item_id,
                 cash_id: value.cash_id.into(),
-                expiration: MapleTime(0),
+                expiration: MapleExpiration::never(),
             },
             quantity: value.quantity,
             title: value.owner.clone().unwrap_or("aaa".to_string()),
             flag: value.flags,
-            serial_number: None.into()
+            serial_number: None.into(),
         }
     }
 }
