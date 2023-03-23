@@ -1,6 +1,7 @@
 use std::sync::Arc;
 
 use dashmap::DashMap;
+use moople_net::service::session_svc::SharedSessionHandle;
 use moople_packet::{MaplePacket, EncodePacket, HasOpcode, MaplePacketWriter};
 use tokio::sync::{mpsc, broadcast};
 
@@ -38,25 +39,18 @@ impl SharedSessionData {
 
 #[derive(Debug)]
 pub struct SessionSet {
-    sessions: DashMap<CharacterID, SharedSessionDataRef>,
-    broadcast_tx: broadcast::Sender<BroadcastPacket>,
-    _broadcast_rx: broadcast::Receiver<BroadcastPacket>,
-
+    sessions: DashMap<CharacterID, SharedSessionHandle>,
 }
 
 impl SessionSet {
     pub fn new() -> Self {
-        let (broadcast_tx, _broadcast_rx) = broadcast::channel(64);
         Self {
             sessions: DashMap::new(),
-            broadcast_tx,
-            _broadcast_rx,
         }
     }
 
-    pub fn add(&self, key: CharacterID, session: SharedSessionDataRef) -> BroadcastRx {
+    pub fn add(&self, key: CharacterID, session: SharedSessionHandle) {
         self.sessions.insert(key, session);
-        self.broadcast_tx.subscribe()
     }
 
     pub fn remove(&self, key: CharacterID) {
@@ -71,15 +65,20 @@ impl SessionSet {
         self.sessions
             .get(&rx_key)
             .ok_or_else(|| anyhow::format_err!("Unable to find session"))?
-            .session_tx
-            .send(pkt)
-            .await?;
+            .tx
+            .clone()
+            .try_send(pkt.data)?;
 
         Ok(())
     }
 
     pub fn broadcast_packet(&self, pkt: MaplePacket, src: CharacterID) -> anyhow::Result<()> {
-        self.broadcast_tx.send((src, pkt))?;
+        for sess in self.sessions.iter() {
+            if src == *sess.key() {
+                continue;
+            }
+            let _ = sess.tx.clone().try_send(&pkt.data);
+        }
         Ok(())
     }
 

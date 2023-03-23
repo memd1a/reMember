@@ -1,7 +1,7 @@
 use std::{ops::Deref, sync::Arc};
 
 use dashmap::DashMap;
-use moople_net::service::packet_buffer::PacketBuffer;
+use moople_net::service::{packet_buffer::PacketBuffer, session_svc::SharedSessionHandle};
 use proto95::{
     game::{
         chat::UserChatMsgResp,
@@ -17,7 +17,7 @@ use super::{
     data::character::CharacterID,
     helper::pool::{drop::DropLeaveParam, reactor::Reactor, user::User, Drop, Mob, Npc, Pool},
     meta::meta_service::{FieldMeta, MetaService},
-    session::session_set::{BroadcastRx, SessionSet, SharedSessionDataRef},
+    session::session_set::{BroadcastRx, SessionSet},
 };
 
 #[derive(Debug)]
@@ -34,8 +34,7 @@ pub struct FieldData {
 
 pub struct FieldJoinHandle {
     field_data: Arc<FieldData>,
-    char_id: CharacterID,
-    pub field_broadcast_rx: BroadcastRx,
+    char_id: CharacterID
 }
 
 impl Deref for FieldJoinHandle {
@@ -109,10 +108,10 @@ impl FieldData {
     pub async fn enter_field(
         &self,
         char_id: CharacterID,
-        session: SharedSessionDataRef,
+        session: SharedSessionHandle,
         avatar_data: AvatarData,
         buf: &mut PacketBuffer,
-    ) -> anyhow::Result<BroadcastRx> {
+    ) -> anyhow::Result<()> {
         let rx = self.sessions.add(char_id, session);
         self
             .user_pool
@@ -132,7 +131,7 @@ impl FieldData {
         self.mob_pool.on_enter(buf).await?;
         self.reactor_pool.on_enter(buf).await?;
 
-        Ok(rx)
+        Ok(())
     }
 
     pub fn leave_field(&self, id: CharacterID) {
@@ -239,7 +238,7 @@ impl FieldData {
         Ok(())
     }
 
-    pub async fn assign_mob_controller(&self, session: SharedSessionDataRef) -> anyhow::Result<()> {
+    pub async fn assign_mob_controller(&self, session: SharedSessionHandle) -> anyhow::Result<()> {
         self.mob_pool.assign_controller(session).await?;
         Ok(())
     }
@@ -310,7 +309,7 @@ impl FieldService {
         &self,
         char_id: CharacterID,
         avatar_data: AvatarData,
-        session: SharedSessionDataRef,
+        session: SharedSessionHandle,
         buf: &mut PacketBuffer,
         field_id: MapId,
     ) -> anyhow::Result<FieldJoinHandle> {
@@ -320,7 +319,6 @@ impl FieldService {
         Ok(FieldJoinHandle {
             field_data: field.clone(),
             char_id,
-            field_broadcast_rx,
         })
     }
 }

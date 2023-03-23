@@ -49,7 +49,7 @@ impl<const N: usize> PacketLen for arrayvec::ArrayString<N> {
     const SIZE_HINT: Option<usize> = None;
 
     fn packet_len(&self) -> usize {
-        self.len()
+        self.len() + 2
     }
 }
 

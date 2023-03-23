@@ -3,7 +3,7 @@ use std::net::{IpAddr, SocketAddr};
 use data::services::{server_info::ServerInfo, Services, SharedServices, meta::meta_service::MetaService};
 use login::{config::LoginConfig, LoginHandler};
 use moople_net::service::{
-    handler::{MakeServerSessionHandler, BroadcastSender}, session_svc::MapleServer, BasicHandshakeGenerator,
+    handler::{MakeServerSessionHandler, BroadcastSender}, session_svc::{MapleServer, SharedSessionHandle}, BasicHandshakeGenerator,
     HandshakeGenerator,
 };
 use tokio::{net::TcpStream, task::JoinSet};
@@ -34,7 +34,7 @@ impl MakeServerSessionHandler for MakeLoginHandler {
     async fn make_handler(
         &mut self,
         sess: &mut moople_net::MapleSession<Self::Transport>,
-        _broadcast_tx: BroadcastSender
+        _broadcast_tx: SharedSessionHandle
     ) -> Result<Self::Handler, Self::Error> {
         Ok(LoginHandler::new(
             self.services.clone(),

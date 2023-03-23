@@ -1,7 +1,7 @@
-pub mod broadcast_buf;
+pub mod framed_pipe;
 pub mod packet_buffer;
 
-use moople_packet::proto::string::FixedPacketString;
+use arrayvec::ArrayString;
 
 use crate::{codec::handshake::Handshake, crypto::RoundKey};
 
@@ -17,25 +17,25 @@ pub trait HandshakeGenerator {
 #[derive(Debug, Clone)]
 pub struct BasicHandshakeGenerator {
     version: u16,
-    sub_version: FixedPacketString<2>,
+    sub_version: ArrayString<2>,
     locale: u8,
 }
 
 impl BasicHandshakeGenerator {
-    pub fn new(version: u16, sub_version: FixedPacketString<2>, locale: u8) -> Self {
+    pub fn new(version: u16, sub_version: &str, locale: u8) -> Self {
         Self {
             version,
-            sub_version,
+            sub_version: sub_version.try_into().expect("Subversion"),
             locale,
         }
     }
 
     pub fn v95() -> Self {
-        Self::new(95, FixedPacketString::try_from("1").unwrap(), 8)
+        Self::new(95, "1", 8)
     }
 
     pub fn v83() -> Self {
-        Self::new(83, FixedPacketString::try_from("1").unwrap(), 8)
+        Self::new(83, "1", 8)
     }
 }
 

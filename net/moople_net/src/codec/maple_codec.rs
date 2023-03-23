@@ -1,4 +1,4 @@
-use bytes::Buf;
+use bytes::{Buf, BufMut};
 use moople_packet::{MaplePacket, NetError, NetResult};
 use tokio_util::codec::{Decoder, Encoder};
 
@@ -17,19 +17,19 @@ pub struct PacketCodec {
 }
 
 impl PacketCodec {
-    pub fn client_from_handshake(handshake: &Handshake) -> Self {
+    pub fn client_from_handshake(handshake: Handshake) -> Self {
         let v = MapleVersion(handshake.version);
         Self {
-            decode: PacketDecodeCodec(MapleCrypto::from_round_key(handshake.iv_enc, v)),
-            encode: PacketEncodeCodec(MapleCrypto::from_round_key(handshake.iv_dec, v.invert())),
+            decode: PacketDecodeCodec(MapleCrypto::from_round_key(handshake.iv_dec, v.invert())),
+            encode: PacketEncodeCodec(MapleCrypto::from_round_key(handshake.iv_enc, v)),
         }
     }
 
-    pub fn server_from_handshake(handshake: &Handshake) -> Self {
+    pub fn server_from_handshake(handshake: Handshake) -> Self {
         let v = MapleVersion(handshake.version);
         Self {
-            encode: PacketEncodeCodec(MapleCrypto::from_round_key(handshake.iv_dec, v.invert())),
             decode: PacketDecodeCodec(MapleCrypto::from_round_key(handshake.iv_enc, v)),
+            encode: PacketEncodeCodec(MapleCrypto::from_round_key(handshake.iv_dec, v.invert())),
         }
     }
 }
@@ -87,24 +87,25 @@ impl Decoder for PacketDecodeCodec {
 
 pub struct PacketEncodeCodec(pub MapleCrypto);
 
-impl Encoder<EncodeItem> for PacketCodec {
+impl<'a> Encoder<&'a [u8]> for PacketCodec {
     type Error = NetError;
 
-    fn encode(&mut self, item: EncodeItem, dst: &mut bytes::BytesMut) -> Result<(), Self::Error> {
+    fn encode(&mut self, item: &'a [u8], dst: &mut bytes::BytesMut) -> Result<(), Self::Error> {
         self.encode.encode(item, dst)
     }
 }
 
-impl Encoder<EncodeItem> for PacketEncodeCodec {
+impl<'a> Encoder<&'a [u8]> for PacketEncodeCodec {
     type Error = NetError;
 
-    fn encode(&mut self, item: EncodeItem, dst: &mut bytes::BytesMut) -> Result<(), Self::Error> {
-        let length = item.0 - PACKET_HEADER_LEN;
-        check_packet_len(length)?;
+    fn encode(&mut self, item: &'a [u8], dst: &mut bytes::BytesMut) -> Result<(), Self::Error> {
+        let len = item.len();
+        check_packet_len(len)?;
+        dst.reserve(PACKET_HEADER_LEN + len);
 
-        let hdr = self.0.encode_header(length as u16);
-        dst[..PACKET_HEADER_LEN].copy_from_slice(hdr.as_slice());
-        self.0.encrypt(&mut dst[PACKET_HEADER_LEN..]);
+        dst.put_slice(&self.0.encode_header(len as u16));
+        dst.put_slice(item);
+        self.0.encrypt(&mut dst[PACKET_HEADER_LEN..PACKET_HEADER_LEN + len]);
         Ok(())
     }
 }

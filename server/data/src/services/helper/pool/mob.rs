@@ -1,20 +1,25 @@
-use moople_net::service::packet_buffer::PacketBuffer;
+use futures::SinkExt;
+use moople_net::service::{packet_buffer::PacketBuffer, session_svc::SharedSessionHandle};
 use moople_packet::{EncodePacket, HasOpcode, MaplePacketWriter};
 use proto95::{
     game::{
         mob::{
             CarnivalTeam, LocalMobData, MobChangeControllerResp, MobDamagedResp, MobEnterFieldResp,
-            MobHPIndicatorResp, MobId, MobInitData, MobLeaveFieldResp, MobLeaveType, MobSummonType,
-            MobTemporaryStatPartial, PartialMobTemporaryStat, MobMoveReq, MobMoveResp,
+            MobHPIndicatorResp, MobId, MobInitData, MobLeaveFieldResp, MobLeaveType, MobMoveReq,
+            MobMoveResp, MobSummonType, MobTemporaryStatPartial, PartialMobTemporaryStat,
         },
         ObjectId,
     },
-    shared::{FootholdId, Vec2, movement::Movement},
+    shared::{FootholdId, Vec2},
 };
 
-use crate::services::{meta::meta_service::MobMeta, session::session_set::{SharedSessionDataRef, SessionSet}, data::character::CharacterID};
+use crate::services::{
+    data::character::CharacterID,
+    meta::meta_service::MobMeta,
+    session::session_set::{SessionSet, SharedSessionDataRef},
+};
 
-use super::{Pool, PoolItem, next_id};
+use super::{next_id, Pool, PoolItem};
 
 #[derive(Debug)]
 pub struct Mob {
@@ -86,7 +91,7 @@ impl PoolItem for Mob {
 }
 
 impl Pool<Mob> {
-    pub async fn assign_controller(&self, session: SharedSessionDataRef) -> anyhow::Result<()> {
+    pub async fn assign_controller(&self, mut session: SharedSessionHandle) -> anyhow::Result<()> {
         //TODO move out loop
         for (id, mob) in self.items.read().await.iter() {
             let empty_stats = PartialMobTemporaryStat {
@@ -110,7 +115,7 @@ impl Pool<Mob> {
                 .into(),
             }
             .encode_packet(&mut pw)?;
-            session.session_tx.send(pw.into_packet()).await?;
+            session.tx.send(pw.into_packet().data).await?;
         }
         Ok(())
     }
@@ -149,7 +154,7 @@ impl Pool<Mob> {
         id: ObjectId,
         req: MobMoveReq,
         controller: CharacterID,
-        sessions: &SessionSet
+        sessions: &SessionSet,
     ) -> anyhow::Result<()> {
         let pkt = MobMoveResp {
             id,

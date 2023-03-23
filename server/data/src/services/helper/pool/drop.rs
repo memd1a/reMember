@@ -11,12 +11,12 @@ use proto95::{
         ObjectId,
     },
     id::ItemId,
-    shared::{char::CharacterId, Vec2},
+    shared::Vec2,
 };
 
-use crate::services::{session::session_set::SessionSet, data::character::CharacterID};
+use crate::services::{data::character::CharacterID, session::session_set::SessionSet};
 
-use super::{Pool, PoolItem, next_id};
+use super::{next_id, Pool, PoolItem};
 
 #[derive(Debug)]
 pub struct Drop {
@@ -24,7 +24,7 @@ pub struct Drop {
     pub pos: Vec2,
     pub start_pos: Vec2,
     pub value: DropTypeValue,
-    pub quantity: usize
+    pub quantity: usize,
 }
 
 #[derive(Debug)]
@@ -51,7 +51,6 @@ impl PoolItem for Drop {
     type EnterPacket = DropEnterFieldResp;
     type LeavePacket = DropLeaveFieldResp;
     type LeaveParam = DropLeaveParam;
-
 
     fn get_id(&self) -> Self::Id {
         next_id()
@@ -126,7 +125,7 @@ impl Pool<Drop> {
                     pos,
                     start_pos: pos,
                     value: DropTypeValue::Mesos(money),
-                    quantity: 1
+                    quantity: 1,
                 },
                 sessions,
             )
@@ -140,7 +139,7 @@ impl Pool<Drop> {
                     pos,
                     start_pos: pos,
                     value: DropTypeValue::Item(item),
-                    quantity
+                    quantity,
                 },
                 sessions,
             )

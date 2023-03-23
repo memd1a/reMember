@@ -1,14 +1,14 @@
 use std::{fmt::Debug, time::Duration};
 
 use async_trait::async_trait;
-use futures::{Future, future};
+use futures::{future, Future};
 use moople_packet::{DecodePacket, MaplePacket, MaplePacketReader, NetError};
 use thiserror::Error;
 use tokio::sync::mpsc;
 
 use crate::{MapleSession, SessionTransport};
 
-use super::resp::{IntoResponse, Response};
+use super::{resp::{IntoResponse, Response}, session_svc::SharedSessionHandle};
 
 pub type BroadcastSender = mpsc::Sender<MaplePacket>;
 
@@ -56,7 +56,7 @@ pub trait MakeServerSessionHandler {
     async fn make_handler(
         &mut self,
         sess: &mut MapleSession<Self::Transport>,
-        broadcast_tx: BroadcastSender,
+        handle: SharedSessionHandle
     ) -> Result<Self::Handler, Self::Error>;
 }
 
@@ -110,12 +110,10 @@ macro_rules! maple_router_handler {
 mod tests {
     use std::io;
 
-    use moople_packet::{opcode::WithOpcode, MaplePacketReader, MaplePacketWriter, proto::string::FixedPacketString};
+    use moople_packet::{opcode::WithOpcode, MaplePacketReader, MaplePacketWriter};
 
     use crate::{
-        codec::{handshake::Handshake, maple_codec::PacketCodec},
-        crypto::RoundKey,
-        service::handler::SessionError,
+        service::{handler::SessionError, BasicHandshakeGenerator, HandshakeGenerator},
         MapleSession,
     };
 
@@ -143,14 +141,8 @@ mod tests {
 
     fn get_fake_session() -> MapleSession<std::io::Cursor<Vec<u8>>> {
         let io = std::io::Cursor::new(vec![]);
-        let hshake = Handshake {
-            version: 83,
-            subversion: FixedPacketString::try_from("1").unwrap(),
-            iv_enc: RoundKey::zero(),
-            iv_dec: RoundKey::zero(),
-            locale: 0,
-        };
-        MapleSession::from_client_handshake(io, &hshake)
+        let hshake = BasicHandshakeGenerator::v83().generate_handshake();
+        MapleSession::from_client_handshake(io, hshake)
     }
 
     #[tokio::test]

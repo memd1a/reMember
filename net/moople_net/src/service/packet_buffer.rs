@@ -4,6 +4,8 @@ use bytes::BytesMut;
 use itertools::Itertools;
 use moople_packet::{EncodePacket, HasOpcode, MaplePacketWriter, NetResult};
 
+/// Buffer to allow to encode multiple packets onto one buffer
+/// while still allowing to iterate over the encoded packets
 #[derive(Debug)]
 pub struct PacketBuffer {
     buf: BytesMut,
@@ -24,6 +26,7 @@ impl PacketBuffer {
         }
     }
 
+    /// Encode a packet onto the buffer
     pub fn write_packet<T: EncodePacket + HasOpcode>(&mut self, pkt: T) -> NetResult<()> {
         let ix = self.buf.len();
         let mut pw = MaplePacketWriter::new(&mut self.buf);
@@ -38,16 +41,17 @@ impl PacketBuffer {
         Ok(())
     }
 
+    /// Iterator over the written packet frames
     pub fn packets(&self) -> impl Iterator<Item = &[u8]> + '_ {
         self.ix
             .iter()
             .cloned()
             .chain(iter::once(self.buf.len()))
             .tuple_windows()
-            .map(|(l, r)| (l..r))
-            .map(move |r| &self.buf[r])
+            .map(|(l, r)| &self.buf[l..r])
     }
 
+    /// Clears the buffer
     pub fn clear(&mut self) {
         self.buf.truncate(0);
         self.ix.clear();

@@ -1,27 +1,42 @@
 use std::{fmt::Debug, io, marker::PhantomData, time::Duration};
 
 use futures::{Stream, StreamExt};
-use moople_packet::{MaplePacket, NetError};
+use moople_packet::NetError;
 use tokio::{
     net::{TcpListener, TcpStream, ToSocketAddrs},
     sync::mpsc,
 };
-use tokio_stream::wrappers::ReceiverStream;
 use tokio_util::sync::CancellationToken;
 
 use crate::{codec::handshake::Handshake, service::handler::SessionError, MapleSession};
 
 use super::{
-    handler::{
-        BroadcastSender, MakeServerSessionHandler, MapleServerSessionHandler, MapleSessionHandler,
-    },
+    framed_pipe::{framed_pipe, FramedPipeReceiver, FramedPipeSender},
+    handler::{MakeServerSessionHandler, MapleServerSessionHandler, MapleSessionHandler},
     HandshakeGenerator,
 };
 
+#[derive(Debug, Clone)]
+pub struct SharedSessionHandle {
+    pub ct: CancellationToken,
+    pub tx: FramedPipeSender,
+}
+
+impl SharedSessionHandle {
+    pub fn new() -> (Self, FramedPipeReceiver) {
+        let (tx, rx) = framed_pipe(8 * 1024, 128);
+        (
+            Self {
+                ct: CancellationToken::new(),
+                tx,
+            },
+            rx,
+        )
+    }
+}
+
 #[derive(Debug)]
 pub struct MapleSessionHandle<H: MapleSessionHandler> {
-    pub broadcast_tx: BroadcastSender,
-    pub ct: CancellationToken,
     pub handle: tokio::task::JoinHandle<Result<(), SessionError<H::Error>>>,
     _handler: PhantomData<H>,
 }
@@ -30,9 +45,9 @@ impl<H> MapleSessionHandle<H>
 where
     H: MapleSessionHandler + Send,
 {
-    pub fn cancel(&mut self) {
-        self.ct.cancel();
-    }
+    /*pub fn cancel(&mut self) {
+        self.session_handle.ct.cancel();
+    }*/
 
     pub fn is_running(&self) -> bool {
         !self.handle.is_finished()
@@ -41,8 +56,8 @@ where
     async fn exec_server_session(
         mut session: MapleSession<H::Transport>,
         mut handler: H,
-        session_tx: mpsc::Receiver<MaplePacket>,
-        ct: CancellationToken,
+        session_handle: SharedSessionHandle,
+        mut session_rx: FramedPipeReceiver
     ) -> Result<(), SessionError<H::Error>>
     where
         H: MapleServerSessionHandler,
@@ -50,8 +65,6 @@ where
     {
         let mut ping_interval = tokio::time::interval(H::get_ping_interval());
         ping_interval.tick().await;
-
-        let mut session_tx = ReceiverStream::new(session_tx);
 
         loop {
             //TODO might need some micro-optimization to ensure no future gets stalled
@@ -92,16 +105,16 @@ where
                     session.send_raw_packet(&ping_packet.data).await?;
                 },
                 //Handle external Session packets
-                p = session_tx.next() => {
+                p = session_rx.next() => {
                     // note tx is never dropped, so there'll be always a packet here
                     let p = p.expect("Session packet");
-                    session.send_raw_packet(&p.data).await?;
+                    session.send_raw_packet(&p).await?;
                 },
                 p = handler.poll_broadcast() => {
                     let p = p.map_err(SessionError::Session)?.expect("Must contain packet");
                     session.send_raw_packet(&p.data).await?;
                 },
-                _ = ct.cancelled() => {
+                _ = session_handle.ct.cancelled() => {
                     break;
                 },
 
@@ -128,20 +141,18 @@ where
         H::Transport: Unpin + Send + 'static,
         H::Error: Send + 'static,
     {
-        let (broadcast_tx, broadcast_rx) = mpsc::channel(128);
-        let ct = CancellationToken::new();
-        let ct_session = ct.clone();
-        let broadcast_tx_result = broadcast_tx.clone();
-
         let handle = tokio::spawn(async move {
             let res = async move {
-                let mut session = MapleSession::initialize_server_session(io, &handshake).await?;
+                let mut session = MapleSession::initialize_server_session(io, handshake).await?;
+
+                let (sess_handle, sess_rx) = SharedSessionHandle::new();
                 let handler = mk
-                    .make_handler(&mut session, broadcast_tx)
+                    .make_handler(&mut session, sess_handle.clone())
                     .await
                     .map_err(SessionError::Session)?;
+
                 let res =
-                    Self::exec_server_session(session, handler, broadcast_rx, ct_session).await;
+                    Self::exec_server_session(session, handler, sess_handle, sess_rx).await;
                 if let Err(ref err) = res {
                     log::info!("Session exited with error: {:?}", err);
                 }
@@ -158,8 +169,6 @@ where
         });
 
         Ok(MapleSessionHandle {
-            broadcast_tx: broadcast_tx_result,
-            ct,
             handle,
             _handler: PhantomData,
         })

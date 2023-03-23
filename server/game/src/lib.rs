@@ -18,6 +18,7 @@ use moople_net::service::handler::BroadcastSender;
 use moople_net::service::packet_buffer::PacketBuffer;
 use moople_net::service::resp::PacketOpcodeExt;
 use moople_net::SessionTransport;
+use moople_net::service::session_svc::SharedSessionHandle;
 use moople_net::{
     maple_router_handler,
     service::{
@@ -115,14 +116,14 @@ impl MakeServerSessionHandler for MakeGameHandler {
     async fn make_handler(
         &mut self,
         sess: &mut moople_net::MapleSession<Self::Transport>,
-        broadcast_tx: BroadcastSender,
+        sess_handle: SharedSessionHandle,
     ) -> Result<Self::Handler, Self::Error> {
         let mut handler = GameHandler::from_session(
             sess,
             self.services.clone(),
             self.channel_id,
             self.world_id,
-            broadcast_tx,
+            sess_handle,
         )
         .await?;
         sess.send_packet(handler.set_field()).await?;
@@ -139,7 +140,7 @@ pub struct GameHandler {
     services: SharedServices,
     addr: IpAddr,
     client_key: ClientKey,
-    handle: SharedSessionDataRef,
+    sess_handle: SharedSessionHandle,
     pos: Vec2,
     fh: FootholdId,
     field: FieldJoinHandle,
@@ -154,7 +155,7 @@ impl GameHandler {
         services: SharedServices,
         channel_id: ChannelId,
         world_id: WorldId,
-        broadcast_tx: BroadcastSender,
+        sess_handle: SharedSessionHandle,
     ) -> anyhow::Result<Self> {
         let addr = net_session.peer_addr()?;
         log::info!("Game sess: {} - waiting abit for session to be free", addr);
@@ -185,10 +186,6 @@ impl GameHandler {
             session.char.name
         );
 
-        let handle = Arc::new(SharedSessionData {
-            session_tx: broadcast_tx.clone(),
-        });
-
         let avatar_data = map_char_to_avatar(&session.char);
 
         let mut packet_buf = PacketBuffer::new();
@@ -198,7 +195,7 @@ impl GameHandler {
             .join_field(
                 session.char.id,
                 avatar_data.clone(),
-                handle.clone(),
+                sess_handle.clone(),
                 &mut packet_buf,
                 MapId(session.char.map_id as u32),
             )
@@ -213,7 +210,7 @@ impl GameHandler {
             client_key: req.client_key,
             pos: Vec2::default(),
             fh: 0,
-            handle,
+            sess_handle,
             field: join_field,
             packet_buf,
             repl: GameRepl::new(),
@@ -226,15 +223,6 @@ impl GameHandler {
 impl MapleSessionHandler for GameHandler {
     type Transport = TcpStream;
     type Error = anyhow::Error;
-
-    async fn poll_broadcast(&mut self) -> Result<Option<MaplePacket>, Self::Error> {
-        loop {
-            let (char_src, pkt) = self.field.field_broadcast_rx.recv().await?;
-            if char_src != self.session.char.id {
-                break Ok(Some(pkt))
-            }
-        }
-    }
 
     async fn handle_packet(
         &mut self,
@@ -538,7 +526,7 @@ impl GameHandler {
             pw.write_opcode(UserChatMsgResp::OPCODE);
             resp.encode_packet(&mut pw)?;
 
-            self.handle.session_tx.send(pw.into_packet()).await?;
+            self.sess_handle.tx.try_send(&pw.into_packet().data)?;
         } else {
             self.field
                 .add_chat(UserChatMsgResp {
@@ -607,7 +595,7 @@ impl GameHandler {
             .join_field(
                 self.session.char.id,
                 self.avatar_data.clone(),
-                self.handle.clone(),
+                self.sess_handle.clone(),
                 &mut self.packet_buf,
                 MapId(self.session.char.map_id as u32),
             )

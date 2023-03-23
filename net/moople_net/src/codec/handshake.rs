@@ -1,8 +1,9 @@
 use std::io::{Read, Write};
 
+use arrayvec::ArrayString;
 use moople_packet::{
-    proto::{string::FixedPacketString, wrapped::PacketWrapped},
-    DecodePacket, EncodePacket, MaplePacketWriter, NetError, PacketLen,
+    proto::wrapped::PacketWrapped, DecodePacket, EncodePacket, MaplePacketWriter, NetError,
+    PacketLen,
 };
 use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 
@@ -18,7 +19,7 @@ pub type HandshakeBuf = [u8; MAX_HANDSHAKE_LEN + 2];
 #[derive(Debug, PartialEq, Eq, PartialOrd, Clone)]
 pub struct Handshake {
     pub version: u16,
-    pub subversion: FixedPacketString<2>,
+    pub subversion: ArrayString<2>,
     pub iv_enc: RoundKey,
     pub iv_dec: RoundKey,
     pub locale: u8,
@@ -86,7 +87,7 @@ impl Handshake {
 impl PacketWrapped for Handshake {
     type Inner = (
         u16,
-        FixedPacketString<2>,
+        ArrayString<2>,
         [u8; ROUND_KEY_LEN],
         [u8; ROUND_KEY_LEN],
         u8,
@@ -115,10 +116,8 @@ impl PacketWrapped for Handshake {
 
 #[cfg(test)]
 mod tests {
-    use moople_packet::{
-        proto::string::FixedPacketString, DecodePacket, EncodePacket, MaplePacket,
-        MaplePacketWriter,
-    };
+    use arrayvec::ArrayString;
+    use moople_packet::{DecodePacket, EncodePacket, MaplePacket, MaplePacketWriter};
 
     use crate::crypto::RoundKey;
 
@@ -128,7 +127,7 @@ mod tests {
     fn test_handshake_encode_decode() {
         let handshake = Handshake {
             version: 1,
-            subversion: FixedPacketString::try_from("2").unwrap(),
+            subversion: ArrayString::try_from("2").unwrap(),
             iv_enc: RoundKey([1u8; 4]),
             iv_dec: RoundKey([2u8; 4]),
             locale: 5,

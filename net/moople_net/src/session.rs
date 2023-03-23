@@ -1,13 +1,10 @@
 use std::{io, net::SocketAddr};
 
 use crate::{
-    codec::{
-        handshake::Handshake,
-        maple_codec::{EncodeItem, PacketCodec},
-    },
+    codec::{handshake::Handshake, maple_codec::PacketCodec},
     service::packet_buffer::PacketBuffer,
 };
-use bytes::BufMut;
+use bytes::BytesMut;
 use futures::{SinkExt, StreamExt};
 use moople_packet::{
     opcode::NetOpcode, EncodePacket, HasOpcode, MaplePacket, MaplePacketWriter, NetResult,
@@ -23,6 +20,7 @@ impl<T> SessionTransport for T where T: AsyncWrite + AsyncRead {}
 
 pub struct MapleSession<T> {
     codec: Framed<T, PacketCodec>,
+    encode_buffer: BytesMut,
 }
 
 impl<T> MapleSession<T>
@@ -32,27 +30,29 @@ where
     pub fn new(io: T, codec: PacketCodec) -> Self {
         Self {
             codec: Framed::new(io, codec),
+            encode_buffer: BytesMut::new(),
         }
     }
 
-    pub async fn initialize_server_session(mut io: T, handshake: &Handshake) -> NetResult<Self> {
+    /// Initialize a server session, by sending out the given handshake
+    pub async fn initialize_server_session(mut io: T, handshake: Handshake) -> NetResult<Self> {
         handshake.write_handshake_async(&mut io).await?;
         Ok(Self::from_server_handshake(io, handshake))
     }
 
     pub async fn initialize_client_session(mut io: T) -> NetResult<(Self, Handshake)> {
         let handshake = Handshake::read_handshake_async(&mut io).await?;
-        let sess = Self::from_client_handshake(io, &handshake);
+        let sess = Self::from_client_handshake(io, handshake.clone());
 
         Ok((sess, handshake))
     }
 
-    pub fn from_server_handshake(io: T, handshake: &Handshake) -> Self {
+    pub fn from_server_handshake(io: T, handshake: Handshake) -> Self {
         let codec = PacketCodec::server_from_handshake(handshake);
         Self::new(io, codec)
     }
 
-    pub fn from_client_handshake(io: T, handshake: &Handshake) -> Self {
+    pub fn from_client_handshake(io: T, handshake: Handshake) -> Self {
         let codec = PacketCodec::client_from_handshake(handshake);
         Self::new(io, codec)
     }
@@ -65,35 +65,17 @@ where
     }
 
     pub async fn send_packet_buffer(&mut self, buf: &PacketBuffer) -> NetResult<()> {
-        //TODO optimize this to send that in one tcp packet
+        // It is required to send the packets one-by-one, because the client doesn't support
+        // other ways
         for pkt in buf.packets() {
-            let buf = self.codec.write_buffer_mut();
-            let n = buf.len();
-            // Make space for the header
-            buf.put_i32(0);
-            buf.put_slice(&pkt);
-
-            // Determine encoded size
-            let n = buf.len() - n;
-
-            self.codec.feed(EncodeItem(n)).await?;
+            self.codec.send(pkt).await?;
         }
 
-        self.codec.flush().await?;
         Ok(())
     }
 
     pub async fn send_raw_packet(&mut self, data: &[u8]) -> NetResult<()> {
-        let buf = self.codec.write_buffer_mut();
-        let n = buf.len();
-        // Make space for the header
-        buf.put_i32(0);
-        buf.put_slice(data);
-
-        // Determine encoded size
-        let n = buf.len() - n;
-
-        self.codec.send(EncodeItem(n)).await?;
+        self.codec.send(data).await?;
         Ok(())
     }
 
@@ -102,18 +84,13 @@ where
         opcode: impl NetOpcode,
         data: P,
     ) -> NetResult<()> {
-        let mut buf = self.codec.write_buffer_mut();
-        // Make space for the header
-        let n = buf.len();
-        buf.put_i32(0);
-        let mut pw = MaplePacketWriter::new(&mut buf);
+        self.encode_buffer.clear();
+
+        let mut pw = MaplePacketWriter::new(&mut self.encode_buffer);
         pw.write_opcode(opcode);
         data.encode_packet(&mut pw)?;
 
-        // Determine encoded size
-        let n = buf.len() - n;
-
-        self.codec.send(EncodeItem(n)).await?;
+        self.codec.send(&self.encode_buffer).await?;
         Ok(())
     }
 
@@ -150,7 +127,7 @@ impl MapleSession<TcpStream> {
 mod tests {
     use std::net::{IpAddr, Ipv4Addr};
 
-    use moople_packet::proto::string::FixedPacketString;
+    use arrayvec::ArrayString;
     use turmoil::net::{TcpListener, TcpStream};
 
     use crate::{codec::handshake::Handshake, crypto::RoundKey, MapleSession};
@@ -170,7 +147,7 @@ mod tests {
         sim.host("server", || async move {
             let handshake = Handshake {
                 version: V,
-                subversion: FixedPacketString::try_from("1").unwrap(),
+                subversion: ArrayString::try_from("1").unwrap(),
                 iv_enc: RoundKey::zero(),
                 iv_dec: RoundKey::zero(),
                 locale: 1,
@@ -180,7 +157,8 @@ mod tests {
 
             loop {
                 let socket = listener.accept().await?.0;
-                let mut sess = MapleSession::initialize_server_session(socket, &handshake).await?;
+                let mut sess =
+                    MapleSession::initialize_server_session(socket, handshake.clone()).await?;
 
                 // Echo
                 loop {

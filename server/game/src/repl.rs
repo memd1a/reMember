@@ -114,7 +114,7 @@ impl GameHandler {
             }
             ReplCmd::Aggro => {
                 self.field
-                    .assign_mob_controller(self.handle.clone())
+                    .assign_mob_controller(self.sess_handle.clone())
                     .await?;
                 None
             }
