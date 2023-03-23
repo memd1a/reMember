@@ -1,7 +1,7 @@
 use std::{fmt::Debug, time::Duration};
 
 use async_trait::async_trait;
-use futures::Future;
+use futures::{Future, future};
 use moople_packet::{DecodePacket, MaplePacket, MaplePacketReader, NetError};
 use thiserror::Error;
 use tokio::sync::mpsc;
@@ -30,6 +30,11 @@ pub trait MapleSessionHandler: Sized {
         packet: MaplePacket,
         session: &mut MapleSession<Self::Transport>,
     ) -> Result<(), SessionError<Self::Error>>;
+
+    async fn poll_broadcast(&mut self) -> Result<Option<MaplePacket>, Self::Error> {
+        future::pending::<()>().await;
+        unreachable!()
+    }
 
     async fn finish(self, _is_migrating: bool) -> Result<(), SessionError<Self::Error>> {
         Ok(())
@@ -105,11 +110,10 @@ macro_rules! maple_router_handler {
 mod tests {
     use std::io;
 
-    use moople_packet::{opcode::WithOpcode, MaplePacketReader, MaplePacketWriter};
-    use tokio_util::codec::Framed;
+    use moople_packet::{opcode::WithOpcode, MaplePacketReader, MaplePacketWriter, proto::string::FixedPacketString};
 
     use crate::{
-        codec::{handshake::Handshake, maple_codec::MapleCodec},
+        codec::{handshake::Handshake, maple_codec::PacketCodec},
         crypto::RoundKey,
         service::handler::SessionError,
         MapleSession,
@@ -139,14 +143,14 @@ mod tests {
 
     fn get_fake_session() -> MapleSession<std::io::Cursor<Vec<u8>>> {
         let io = std::io::Cursor::new(vec![]);
-        let codec = MapleCodec::client_from_handshake(&Handshake {
+        let hshake = Handshake {
             version: 83,
-            subversion: "1".to_string(),
+            subversion: FixedPacketString::try_from("1").unwrap(),
             iv_enc: RoundKey::zero(),
             iv_dec: RoundKey::zero(),
             locale: 0,
-        });
-        MapleSession::new(Framed::new(io, codec))
+        };
+        MapleSession::from_client_handshake(io, &hshake)
     }
 
     #[tokio::test]

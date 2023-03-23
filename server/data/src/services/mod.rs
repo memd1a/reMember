@@ -1,17 +1,12 @@
+pub mod data;
 pub mod field;
-pub mod account;
-pub mod character;
 pub mod helper;
-pub mod item;
+pub mod meta;
 pub mod model;
 pub mod server_info;
 pub mod session;
-pub mod meta;
 
 use std::{sync::Arc, time::Duration};
-
-use account::{AccountId, AccountService, Region};
-use character::{CharacterCreateDTO, CharacterID, CharacterService, ItemStarterSet};
 
 use proto95::{
     id::{job_id::JobGroup, FaceId, HairId, Skin},
@@ -23,38 +18,49 @@ use server_info::{ServerInfo, ServerService};
 use crate::entities::sea_orm_active_enums::GenderTy;
 
 use self::{
-    item::ItemService,
-    session::{session_data::MoopleSessionData, GameSessionManager}, field::FieldService, meta::meta_service::MetaService,
+    data::{
+        account::{AccountId, Region},
+        character::{CharacterCreateDTO, CharacterID, ItemStarterSet},
+        DataServices,
+    },
+    field::FieldService,
+    meta::meta_service::MetaService,
+    session::{session_data::MoopleSessionBackend, GameSessionManager},
 };
 
 pub type SharedServices = Arc<Services>;
 
 #[derive(Debug)]
 pub struct Services {
-    pub account: AccountService,
-    pub character: CharacterService,
-    pub item: ItemService,
+    pub data: Arc<DataServices>,
     pub server_info: ServerService,
-    pub session_manager: GameSessionManager,
+    pub session_manager: GameSessionManager<MoopleSessionBackend>,
     pub field: FieldService,
-    pub meta: &'static MetaService
+    pub meta: &'static MetaService,
 }
 
 impl Services {
-    pub fn new(db: DatabaseConnection, servers: impl IntoIterator<Item = ServerInfo>, meta: &'static MetaService) -> Self {
+    pub fn new(
+        db: DatabaseConnection,
+        servers: impl IntoIterator<Item = ServerInfo>,
+        meta: &'static MetaService,
+    ) -> Self {
+        let data = Arc::new(DataServices::new(db, meta));
+
+        let session_backend = MoopleSessionBackend { data: data.clone() };
+
         Self {
-            account: AccountService::new(db.clone()),
-            item: ItemService::new(db.clone(), meta),
-            character: CharacterService::new(db),
-            session_manager: GameSessionManager::new(Duration::from_secs(30)),
+            data,
+            session_manager: GameSessionManager::new(session_backend, Duration::from_secs(30)),
             server_info: ServerService::new(servers),
             field: FieldService::new(meta),
-            meta
+            meta,
         }
     }
 
     pub async fn seeded_in_memory(
-        servers: impl IntoIterator<Item = ServerInfo>,meta: &'static MetaService
+        servers: impl IntoIterator<Item = ServerInfo>,
+        meta: &'static MetaService,
     ) -> Result<Self, DbErr> {
         let db = crate::gen_sqlite(crate::SQL_OPT_MEMORY).await?;
         Ok(Self::new(db, servers, meta))
@@ -66,6 +72,7 @@ impl Services {
 
     pub async fn seed_acc_char(&self) -> anyhow::Result<(AccountId, CharacterID)> {
         let acc_id = self
+            .data
             .account
             .create(
                 "admin",
@@ -78,7 +85,8 @@ impl Services {
 
         let job = JobGroup::Legend;
         let char_id = self
-            .character
+            .data
+            .char
             .create_character(
                 acc_id,
                 CharacterCreateDTO {
@@ -96,7 +104,33 @@ impl Services {
                     },
                     gender: Gender::Male,
                 },
-                &self.item,
+                &self.data.item,
+            )
+            .await?;
+
+            
+        let job = JobGroup::Legend;
+        let char_id = self
+            .data
+            .char
+            .create_character(
+                acc_id,
+                CharacterCreateDTO {
+                    name: "Aran2".to_string(),
+                    job_group: JobGroup::Adventurer,
+                    face: FaceId::LEISURE_LOOK_M,
+                    skin: Skin::Normal,
+                    hair: HairId::BLACK_TOBEN,
+                    starter_set: ItemStarterSet {
+                        bottom: job.get_starter_bottoms().next().unwrap(),
+                        shoes: job.get_starter_shoes().next().unwrap(),
+                        top: job.get_starter_tops().next().unwrap(),
+                        weapon: job.get_starter_weapons().next().unwrap(),
+                        guide: job.get_guide_item(),
+                    },
+                    gender: Gender::Male,
+                },
+                &self.data.item,
             )
             .await?;
 

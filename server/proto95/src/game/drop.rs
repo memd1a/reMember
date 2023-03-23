@@ -3,7 +3,7 @@ use moople_packet::{
     maple_enum_code, maple_packet_enum, packet_opcode,
     proto::{
         time::{MapleDurationMs16, MapleExpiration},
-        CondOption, MapleTryWrapped,
+        CondOption, PacketTryWrapped,
     },
     NetError,
 };
@@ -25,10 +25,10 @@ pub enum DropOwner {
     Explosive,
 }
 
-impl MapleTryWrapped for DropOwner {
+impl PacketTryWrapped for DropOwner {
     type Inner = (u32, u8);
 
-    fn maple_into_inner(&self) -> Self::Inner {
+    fn packet_into_inner(&self) -> Self::Inner {
         match self {
             DropOwner::User(user) => (*user, 0),
             DropOwner::Party(party) => (*party, 1),
@@ -37,7 +37,7 @@ impl MapleTryWrapped for DropOwner {
         }
     }
 
-    fn maple_try_from(v: Self::Inner) -> moople_packet::NetResult<Self> {
+    fn packet_try_from(v: Self::Inner) -> moople_packet::NetResult<Self> {
         Ok(match v.1 {
             0 => Self::User(v.0),
             1 => Self::Party(v.0),

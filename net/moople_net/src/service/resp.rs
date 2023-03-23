@@ -109,10 +109,8 @@ where
         self,
         session: &mut MapleSession<Trans>,
     ) -> NetResult<()> {
-        log::info!("Sending migration response");
         // Send migration packet and signal via an error the session is about to migrate
         self.0.send(session).await?;
-        log::info!("Returning migration error");
         return Err(NetError::Migrated);
     }
 }

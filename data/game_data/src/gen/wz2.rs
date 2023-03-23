@@ -18,7 +18,7 @@ where
 {
     let v = IntOrString::deserialize(deserializer)?;
     Ok(match v.inner {
-        Either::Left(s) => s.parse().map_err(|err| D::Error::custom(err))?,
+        Either::Left(s) => s.parse().map_err(D::Error::custom)?,
         Either::Right(n) => n,
     })
 }
@@ -29,7 +29,7 @@ where
 {
     let v = IntOrString::deserialize(deserializer)?;
     Ok(match v.inner {
-        Either::Left(s) => s.parse().map_err(|err| D::Error::custom(err))?,
+        Either::Left(s) => s.parse().map_err(D::Error::custom)?,
         Either::Right(n) => n,
     })
 }
@@ -157,6 +157,7 @@ pub struct Item {
     #[serde(rename = "bigSize", default)]
     pub big_size: bool,
 }
+
 
 
 pub fn load_all<T: DeserializeOwned>(

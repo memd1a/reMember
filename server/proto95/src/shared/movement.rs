@@ -1,7 +1,7 @@
 use moople_derive::{MoopleEncodePacket, MooplePacket};
 use moople_packet::{
     maple_enum_code, maple_packet_enum,
-    proto::{time::MapleDurationMs16, DecodePacket, MapleList8, PacketLen},
+    proto::{time::MapleDurationMs16, DecodePacket, MapleList8},
     NetResult,
 };
 
@@ -28,6 +28,7 @@ pub struct MovePassiveInfo {
     pub bounds: Rect,
 }
 
+/* 
 maple_enum_code!(
     MovementState,
     u8,
@@ -45,7 +46,8 @@ maple_enum_code!(
     RightRope = 12,
     LeftLadder = 15,
     RightLadder = 14
-);
+);*/
+pub type MovementAction = u8;
 
 /// Every movement contains this
 #[derive(Debug, MooplePacket)]
@@ -56,7 +58,7 @@ pub struct MovementInfo {
 
 #[derive(Debug, MooplePacket)]
 pub struct MovementFooter {
-    pub state: MovementState,
+    pub action: MovementAction,
     pub dur: MapleDurationMs16,
 }
 
@@ -68,8 +70,7 @@ pub struct AbsoluteMovement {
     pub velocity: Vec2,
     pub foothold: FootholdId,
     pub offset: Vec2,
-    pub state: MovementState,
-    pub dur: MapleDurationMs16,
+    pub footer: MovementFooter
 }
 
 #[derive(Debug, MooplePacket)]
@@ -79,45 +80,39 @@ pub struct AbsoluteFallMovement {
     pub fh: FootholdId,
     pub fh_fall_start: FootholdId,
     pub offset: Vec2,
-    pub state: MovementState,
-    pub dur: MapleDurationMs16,
+    pub footer: MovementFooter
 }
 
 #[derive(Debug, MooplePacket)]
 pub struct RelativeMovement {
     pub velocity: Vec2,
-    pub state: MovementState,
-    pub dur: MapleDurationMs16,
+    pub footer: MovementFooter
 }
 
 #[derive(Debug, MooplePacket)]
 pub struct InstantMovement {
     pub p: Vec2,
     pub fh: FootholdId,
-    pub state: MovementState,
-    pub dur: MapleDurationMs16,
+    pub footer: MovementFooter
 }
 
 #[derive(Debug, MooplePacket)]
 pub struct FallDownMovement {
     pub velocity: Vec2,
     pub fh_fall_start: FootholdId,
-    pub state: MovementState,
-    pub dur: MapleDurationMs16,
+    pub footer: MovementFooter
 }
 
 #[derive(Debug, MooplePacket)]
 pub struct FlyingMovement {
     pub p: Vec2,
     pub velocity: Vec2,
-    pub state: MovementState,
-    pub dur: MapleDurationMs16,
+    pub footer: MovementFooter
 }
 
 #[derive(Debug, MooplePacket)]
 pub struct UnknownMovement {
-    pub state: MovementState,
-    pub dur: MapleDurationMs16,
+    pub footer: MovementFooter
 }
 
 maple_packet_enum!(

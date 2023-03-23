@@ -157,14 +157,14 @@ macro_rules! maple_stats {
             #[derive(Debug, Clone)]
             pub struct [<$flag_name All>];
 
-            impl moople_packet::proto::MapleWrapped for [<$flag_name All>] {
+            impl moople_packet::proto::PacketWrapped for [<$flag_name All>] {
                 type Inner = $flag_ty;
 
-                fn maple_into_inner(&self) -> Self::Inner {
+                fn packet_into_inner(&self) -> Self::Inner {
                     <$flag_name>::all().bits()
                 }
 
-                fn maple_from(_: Self::Inner) -> Self {
+                fn packet_from(_: Self::Inner) -> Self {
                     Self
                 }
             }

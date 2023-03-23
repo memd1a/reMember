@@ -26,14 +26,14 @@ macro_rules! maple_enum_code {
 #[macro_export]
 macro_rules! mark_maple_enum {
     ($enum_ty:ty) => {
-        impl $crate::proto::wrapped::MapleTryWrapped for $enum_ty {
+        impl $crate::proto::wrapped::PacketTryWrapped for $enum_ty {
             type Inner = <$enum_ty as num_enum::TryFromPrimitive>::Primitive;
 
-            fn maple_try_from(v: Self::Inner) -> $crate::NetResult<Self> {
+            fn packet_try_from(v: Self::Inner) -> $crate::NetResult<Self> {
                 use num_enum::TryFromPrimitive;
                 Ok(<$enum_ty>::try_from_primitive(v)?)
             }
-            fn maple_into_inner(&self) -> Self::Inner {
+            fn packet_into_inner(&self) -> Self::Inner {
                 Self::Inner::from(self.clone())
             }
         }
@@ -117,7 +117,7 @@ mod tests {
             let pkt = d.to_data().unwrap();
             let _dec = TestChoice::decode_from_data(&pkt).unwrap();
 
-            //TODO find a way to compare: assert_eq!(dec.maple_into_inner(), d.maple_into_inner());
+            //TODO find a way to compare: assert_eq!(dec.packet_into_inner(), d.packet_into_inner());
         }
     }
 

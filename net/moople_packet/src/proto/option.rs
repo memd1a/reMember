@@ -2,7 +2,7 @@ use std::marker::PhantomData;
 
 use crate::{MaplePacketReader, MaplePacketWriter, NetResult};
 
-use super::{wrapped::MapleWrapped, DecodePacket, DecodePacketOwned, EncodePacket, PacketLen};
+use super::{wrapped::PacketWrapped, DecodePacket, DecodePacketOwned, EncodePacket, PacketLen};
 
 pub trait MapleOptionIndex: EncodePacket + DecodePacketOwned + PacketLen {
     const NONE_VALUE: Self;
@@ -29,17 +29,17 @@ impl MapleOptionIndex for bool {
 #[derive(Debug, Clone, Copy)]
 pub struct RevMapleOptionIndex<Opt>(pub Opt);
 
-impl<Opt> MapleWrapped for RevMapleOptionIndex<Opt>
+impl<Opt> PacketWrapped for RevMapleOptionIndex<Opt>
 where
     Opt: Copy,
 {
     type Inner = Opt;
 
-    fn maple_into_inner(&self) -> Self::Inner {
+    fn packet_into_inner(&self) -> Self::Inner {
         self.0
     }
 
-    fn maple_from(v: Self::Inner) -> Self {
+    fn packet_from(v: Self::Inner) -> Self {
         Self(v)
     }
 }

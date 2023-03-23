@@ -10,6 +10,12 @@ pub struct PacketBuffer {
     ix: Vec<usize>,
 }
 
+impl Default for PacketBuffer {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl PacketBuffer {
     pub fn new() -> Self {
         Self {

@@ -4,7 +4,7 @@ use chrono::{NaiveDateTime, Utc};
 
 use crate::{NetError, NetResult};
 
-use super::wrapped::{MapleTryWrapped, MapleWrapped};
+use super::wrapped::{PacketTryWrapped, PacketWrapped};
 
 const FT_UT_OFFSET: i64 = 116444736010800000;
 const DEFAULT_TIME: i64 = 150842304000000000;
@@ -89,14 +89,14 @@ impl MapleTime {
     }
 }
 
-impl MapleTryWrapped for MapleTime {
+impl PacketTryWrapped for MapleTime {
     type Inner = i64;
 
-    fn maple_into_inner(&self) -> Self::Inner {
+    fn packet_into_inner(&self) -> Self::Inner {
         self.0
     }
 
-    fn maple_try_from(v: Self::Inner) -> NetResult<Self> {
+    fn packet_try_from(v: Self::Inner) -> NetResult<Self> {
         Self::try_from(v)
     }
 }
@@ -104,14 +104,14 @@ impl MapleTryWrapped for MapleTime {
 #[derive(Debug)]
 pub struct Ticks(pub u32);
 
-impl MapleWrapped for Ticks {
+impl PacketWrapped for Ticks {
     type Inner = u32;
 
-    fn maple_into_inner(&self) -> Self::Inner {
+    fn packet_into_inner(&self) -> Self::Inner {
         self.0
     }
 
-    fn maple_from(v: Self::Inner) -> Self {
+    fn packet_from(v: Self::Inner) -> Self {
         Self(v)
     }
 }
@@ -146,14 +146,14 @@ impl MapleExpiration {
     }
 }
 
-impl MapleWrapped for MapleExpiration {
+impl PacketWrapped for MapleExpiration {
     type Inner = MapleTime;
 
-    fn maple_into_inner(&self) -> Self::Inner {
+    fn packet_into_inner(&self) -> Self::Inner {
         self.0.unwrap_or(MapleTime(0))
     }
 
-    fn maple_from(v: Self::Inner) -> Self {
+    fn packet_from(v: Self::Inner) -> Self {
         Self((v.0 != 0).then_some(v))
     }
 }
@@ -167,17 +167,17 @@ impl<T: Debug> Debug for DurationMs<T> {
     }
 }
 
-impl<T> MapleWrapped for DurationMs<T>
+impl<T> PacketWrapped for DurationMs<T>
 where
     T: Copy,
 {
     type Inner = T;
 
-    fn maple_into_inner(&self) -> Self::Inner {
+    fn packet_into_inner(&self) -> Self::Inner {
         self.0
     }
 
-    fn maple_from(v: Self::Inner) -> Self {
+    fn packet_from(v: Self::Inner) -> Self {
         Self(v)
     }
 }
@@ -208,7 +208,7 @@ pub type MapleDurationMs32 = DurationMs<u32>;
 mod tests {
     use std::time::Duration;
 
-    use crate::proto::MapleTryWrapped;
+    use crate::proto::PacketTryWrapped;
 
     use super::{MapleDurationMs32, MapleTime};
 
@@ -223,7 +223,7 @@ mod tests {
         let dur = Duration::from_millis(MS as u64);
 
         let m_dur: MapleDurationMs32 = dur.into();
-        assert_eq!(m_dur.maple_into_inner(), MS);
+        assert_eq!(m_dur.packet_into_inner(), MS);
         assert_eq!(dur, m_dur.into());
     }
 }

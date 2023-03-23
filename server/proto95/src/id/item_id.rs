@@ -1,7 +1,5 @@
 use std::ops::RangeInclusive;
 
-use moople_derive::MooplePacket;
-
 use crate::moople_id;
 
 moople_id!(ItemId, u32);

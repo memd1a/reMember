@@ -220,26 +220,7 @@ impl_dec_enc!(
     MaplePacketWriter::write_f64
 );
 
-impl<'de> DecodePacket<'de> for &'de str {
-    fn decode_packet(pr: &mut MaplePacketReader<'de>) -> NetResult<Self> {
-        pr.read_string()
-    }
-}
 
-impl<'a> EncodePacket for &'a str {
-    fn encode_packet<B: BufMut>(&self, pw: &mut MaplePacketWriter<B>) -> NetResult<()> {
-        pw.write_str(self);
-        Ok(())
-    }
-}
-
-impl<'a> PacketLen for &'a str {
-    const SIZE_HINT: Option<usize> = None;
-
-    fn packet_len(&self) -> usize {
-        MaplePacketReader::str_packet_len(self)
-    }
-}
 
 impl<'de, const N: usize, T: DecodePacket<'de>> DecodePacket<'de> for [T; N] {
     fn decode_packet(pr: &mut MaplePacketReader<'de>) -> NetResult<Self> {

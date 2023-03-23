@@ -16,14 +16,14 @@ macro_rules! moople_id {
         #[derive(Default, Debug, PartialEq, Eq, Clone, Copy, Hash, Ord, PartialOrd)]
         pub struct $name(pub $ty);
 
-        impl moople_packet::proto::MapleWrapped for $name {
+        impl moople_packet::proto::PacketWrapped for $name {
             type Inner = $ty;
 
-            fn maple_into_inner(&self) -> Self::Inner {
+            fn packet_into_inner(&self) -> Self::Inner {
                 self.0
             }
 
-            fn maple_from(v: Self::Inner) -> Self {
+            fn packet_from(v: Self::Inner) -> Self {
                 Self(v)
             }
         }

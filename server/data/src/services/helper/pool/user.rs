@@ -1,30 +1,35 @@
-use moople_packet::proto::list::{MapleIndexList8, MapleIndexListZ};
+use moople_packet::proto::list::MapleIndexListZ;
 use proto95::{
     game::{
-        user::remote::{
-            GuildMarkData, TamingMobData, UserEnterFieldResp, UserLeaveFieldResp,
-            UserRemoteInitData,
+        user::{
+            remote::{
+                GuildMarkData, TamingMobData, UserEnterFieldResp, UserLeaveFieldResp, UserMoveResp,
+                UserRemoteInitData,
+            },
+            UserMoveReq,
         },
-        ObjectId,
     },
-    id::{job_id::JobId, FaceId, HairId, ItemId, Skin},
+    id::{job_id::JobId, ItemId},
     shared::{
-        char::{AvatarData, AvatarEquips, CharacterId, PetIds, RemoteCharSecondaryStatPartial},
-        Gender, Vec2,
+        char::{AvatarData, CharacterId, RemoteCharSecondaryStatPartial},
+        Vec2,
     },
 };
 
-use super::PoolItem;
+use crate::services::{session::session_set::SessionSet, data::character::CharacterID};
+
+use super::{Pool, PoolItem};
 
 #[derive(Debug)]
 pub struct User {
     pub char_id: CharacterId,
     pub pos: Vec2,
     pub fh: u16,
+    pub avatar_data: AvatarData,
 }
 
 impl PoolItem for User {
-    type Id = ObjectId;
+    type Id = CharacterId;
 
     type EnterPacket = UserEnterFieldResp;
 
@@ -32,7 +37,11 @@ impl PoolItem for User {
 
     type LeaveParam = ();
 
-    fn get_enter_pkt(&self,  _id: Self::Id) -> Self::EnterPacket {
+    fn get_id(&self) -> Self::Id {
+        self.char_id
+    }
+
+    fn get_enter_pkt(&self, _id: Self::Id) -> Self::EnterPacket {
         let secondary_stat = RemoteCharSecondaryStatPartial {
             //shadowpartner: Some(4111002).into(),
             darksight: Some(()).into(),
@@ -40,25 +49,7 @@ impl PoolItem for User {
             ..Default::default()
         };
 
-        let avatar = AvatarData {
-            gender: Gender::Female,
-            skin: Skin::Normal,
-            mega: true,
-            face: FaceId::MOTIVATED_LOOK_F,
-            hair: HairId::ZETA,
-            equips: AvatarEquips {
-                equips: vec![
-                    (5, ItemId(1040006)),
-                    (6, ItemId(1060006)),
-                    (7, ItemId(1072005)),
-                    (11, ItemId(1322005)),
-                ]
-                .into(),
-                masked_equips: MapleIndexList8::default(),
-                weapon_sticker_id: ItemId(0),
-            },
-            pets: PetIds::default(),
-        };
+        let avatar = self.avatar_data.clone();
 
         UserEnterFieldResp {
             char_id: self.char_id,
@@ -100,5 +91,22 @@ impl PoolItem for User {
         UserLeaveFieldResp {
             char_id: self.char_id,
         }
+    }
+}
+
+impl Pool<User> {
+    pub fn user_move(
+        &self,
+        id: CharacterID,
+        req: UserMoveReq,
+        sessions: &SessionSet,
+    ) -> anyhow::Result<()> {
+        let pkt = UserMoveResp {
+            char_id: id as u32,
+            move_path: req.move_path,
+        };
+
+        sessions.broadcast_pkt(pkt, id as i32)?;
+        Ok(())
     }
 }

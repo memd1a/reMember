@@ -8,6 +8,8 @@ use moople_net::service::{
 };
 use tokio::{net::TcpStream, task::JoinSet};
 
+use shrooming::{FileSvr, FileIndex};
+
 static LOGIN_CFG: &LoginConfig = &LoginConfig {
     enable_pic: true,
     enable_pin: false,
@@ -67,6 +69,22 @@ async fn srv_game_server(
     Ok(())
 }
 
+async fn srv_shrooming(addr: SocketAddr) -> anyhow::Result<()> {
+    let file_ix = FileIndex::build_index(
+        [
+            "notes.txt",
+            "../../client/moople_hook/target/i686-pc-windows-gnu/release/dinput8.dll",
+            "../../target/i686-pc-windows-gnu/release/moople_launchar.exe"
+        ].iter()
+    )?;
+
+    FileSvr::new(file_ix)
+        .serve(addr)
+        .await?;
+
+    Ok(())
+}
+
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     // Config
@@ -77,6 +95,7 @@ async fn main() -> anyhow::Result<()> {
     // Base port, this will be the port of the Login Server
     // Channel ports will be BASE_PORT + 1 + ch
     const BASE_PORT: u16 = 8484;
+    const SHROOMING_PORT: u16 = 8490;
     // Change this to your external ip address
     const EXTERNAL_IP: &str = "192.168.124.1";
     // This is the bind addr, 0.0.0.0 means listen on all IPs
@@ -85,8 +104,11 @@ async fn main() -> anyhow::Result<()> {
     pretty_env_logger::init();
     log::info!("{SERVER_NAME} - Mono - {VERSION}");
 
+    
     let server_addr: IpAddr = EXTERNAL_IP.parse()?;
     let bind_addr: IpAddr = BIND_IP.parse()?;
+
+    tokio::spawn(srv_shrooming(SocketAddr::new(bind_addr, SHROOMING_PORT)));
 
     let servers = [ServerInfo::new(
         server_addr,
@@ -96,7 +118,7 @@ async fn main() -> anyhow::Result<()> {
     )];
 
     // Create login server
-    let handshake_gen = BasicHandshakeGenerator::new(95, "1".to_string(), 8);
+    let handshake_gen = BasicHandshakeGenerator::v95();
 
     let meta = Box::new(MetaService::load_from_dir("../../game_data/rbin".into())?);
 

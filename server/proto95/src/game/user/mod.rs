@@ -1,17 +1,15 @@
 pub mod remote;
 
 use bitflags::bitflags;
-use bytes::BufMut;
 use moople_derive::{MooplePacket, MoopleEncodePacket};
 use moople_packet::{
     maple_packet_enum, mark_maple_bit_flags, packet_opcode,
     proto::{
         option::MapleOption8,
         time::{MapleDurationMs16, MapleExpiration, Ticks},
-        CondOption, MapleList16, MapleList8, MapleWrapped,
+        CondOption, MapleList16, MapleList8, PacketWrapped,
     },
-    DecodePacket, EncodePacket, MaplePacketReader, MaplePacketWriter, NetError, NetResult,
-    PacketLen,
+    DecodePacket, MaplePacketReader, NetError, NetResult,
 };
 
 use crate::{
@@ -141,14 +139,14 @@ pub struct HitTargetCount {
     pub targets: u8,
 }
 
-impl MapleWrapped for HitTargetCount {
+impl PacketWrapped for HitTargetCount {
     type Inner = u8;
 
-    fn maple_into_inner(&self) -> Self::Inner {
+    fn packet_into_inner(&self) -> Self::Inner {
         (self.targets << 4) | (self.hits & 0xF)
     }
 
-    fn maple_from(v: Self::Inner) -> Self {
+    fn packet_from(v: Self::Inner) -> Self {
         Self {
             targets: v >> 4,
             hits: v & 0xF,
@@ -162,14 +160,14 @@ pub struct ActionDir {
     pub action: u16,
 }
 
-impl MapleWrapped for ActionDir {
+impl PacketWrapped for ActionDir {
     type Inner = u16;
 
-    fn maple_into_inner(&self) -> Self::Inner {
+    fn packet_into_inner(&self) -> Self::Inner {
         (self.left as u16) << 15 | (self.action & 0x7FFF)
     }
 
-    fn maple_from(v: Self::Inner) -> Self {
+    fn packet_from(v: Self::Inner) -> Self {
         Self {
             left: v >> 15 == 1,
             action: v & 0x7FFF,
@@ -183,14 +181,14 @@ pub struct ForeActionDir {
     pub action: u8,
 }
 
-impl MapleWrapped for ForeActionDir {
+impl PacketWrapped for ForeActionDir {
     type Inner = u8;
 
-    fn maple_into_inner(&self) -> Self::Inner {
+    fn packet_into_inner(&self) -> Self::Inner {
         (self.left as u8) << 7 | (self.action & 0x7F)
     }
 
-    fn maple_from(v: Self::Inner) -> Self {
+    fn packet_from(v: Self::Inner) -> Self {
         Self {
             left: v >> 7 == 1,
             action: v & 0x7F,
@@ -327,10 +325,10 @@ pub struct DrHitTargetCount {
     pub hit_target_count: HitTargetCount,
 }
 
-impl MapleWrapped for DrHitTargetCount {
+impl PacketWrapped for DrHitTargetCount {
     type Inner = (u32, u32, HitTargetCount, u32, u32);
 
-    fn maple_into_inner(&self) -> Self::Inner {
+    fn packet_into_inner(&self) -> Self::Inner {
         (
             self.dr.dr0,
             self.dr.dr1,
@@ -340,7 +338,7 @@ impl MapleWrapped for DrHitTargetCount {
         )
     }
 
-    fn maple_from(v: Self::Inner) -> Self {
+    fn packet_from(v: Self::Inner) -> Self {
         Self {
             dr: DrCtx {
                 dr0: v.0,

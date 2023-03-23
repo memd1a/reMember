@@ -7,6 +7,6 @@ pub type PartialCharStats = PartialFlag<(), CharStatPartial>;
 
 #[derive(Debug)]
 pub struct CharState {
-    skills: BTreeMap<SkillId, skill::Model>,
-    char_data: PartialCharStats
+    _skills: BTreeMap<SkillId, skill::Model>,
+    _char_data: PartialCharStats
 }

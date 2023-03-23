@@ -2,9 +2,9 @@ use std::sync::Arc;
 
 use dashmap::DashMap;
 use moople_packet::{MaplePacket, EncodePacket, HasOpcode, MaplePacketWriter};
-use tokio::sync::mpsc;
+use tokio::sync::{mpsc, broadcast};
 
-use crate::services::character::CharacterID;
+use crate::services::data::character::CharacterID;
 
 /*
     TODO:
@@ -18,27 +18,45 @@ use crate::services::character::CharacterID;
 
  */
 
+
+pub type BroadcastPacket = (CharacterID, MaplePacket);
+pub type BroadcastRx = broadcast::Receiver<BroadcastPacket>;
+
 #[derive(Debug, Clone)]
 pub struct SharedSessionData {
-    pub broadcast_tx: mpsc::Sender<MaplePacket>,
+    pub session_tx: mpsc::Sender<MaplePacket>,
 }
 
 pub type SharedSessionDataRef = Arc<SharedSessionData>;
 
+impl SharedSessionData {
+    pub async fn send_pkt(&self, pkt: MaplePacket) -> anyhow::Result<()> {
+        self.session_tx.send(pkt).await?;
+        Ok(())
+    }
+}
+
 #[derive(Debug)]
 pub struct SessionSet {
     sessions: DashMap<CharacterID, SharedSessionDataRef>,
+    broadcast_tx: broadcast::Sender<BroadcastPacket>,
+    _broadcast_rx: broadcast::Receiver<BroadcastPacket>,
+
 }
 
 impl SessionSet {
     pub fn new() -> Self {
+        let (broadcast_tx, _broadcast_rx) = broadcast::channel(64);
         Self {
             sessions: DashMap::new(),
+            broadcast_tx,
+            _broadcast_rx,
         }
     }
 
-    pub fn add(&self, key: CharacterID, session: SharedSessionDataRef) {
+    pub fn add(&self, key: CharacterID, session: SharedSessionDataRef) -> BroadcastRx {
         self.sessions.insert(key, session);
+        self.broadcast_tx.subscribe()
     }
 
     pub fn remove(&self, key: CharacterID) {
@@ -53,30 +71,25 @@ impl SessionSet {
         self.sessions
             .get(&rx_key)
             .ok_or_else(|| anyhow::format_err!("Unable to find session"))?
-            .broadcast_tx
+            .session_tx
             .send(pkt)
             .await?;
 
         Ok(())
     }
 
-    pub async fn broadcast_packet(&self, pkt: MaplePacket, src: CharacterID) -> anyhow::Result<()> {
-        // Self broadcast not allowed
-        for r in self.sessions.iter() {
-            if *r.key() != src {
-                r.broadcast_tx.send(pkt.clone()).await?;
-            }
-        }
-
+    pub fn broadcast_packet(&self, pkt: MaplePacket, src: CharacterID) -> anyhow::Result<()> {
+        self.broadcast_tx.send((src, pkt))?;
         Ok(())
     }
 
-    pub async fn broadcast_pkt<T: EncodePacket + HasOpcode>(&self, pkt: T, src: CharacterID) -> anyhow::Result<()> {
+    pub fn broadcast_pkt<T: EncodePacket + HasOpcode>(&self, pkt: T, src: CharacterID) -> anyhow::Result<()> {
         let mut pw = MaplePacketWriter::default();
         pw.write_opcode(T::OPCODE);
         pkt.encode_packet(&mut pw)?;
 
-        self.broadcast_packet(pw.into_packet(), src).await
+        self.broadcast_packet(pw.into_packet(), src)?;
+        Ok(())
     }
 
     pub async fn send_pkt_to<T: EncodePacket + HasOpcode>(&self, rx_key: CharacterID, pkt: T) -> anyhow::Result<()> {

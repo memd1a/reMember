@@ -6,7 +6,7 @@ use proto95::{
     shared::Vec2,
 };
 
-use super::PoolItem;
+use super::{PoolItem, next_id};
 
 #[derive(Debug)]
 pub struct Reactor {
@@ -24,6 +24,10 @@ impl PoolItem for Reactor {
 
     type LeaveParam = ();
 
+    fn get_id(&self) -> Self::Id {
+        next_id()
+    }
+
     fn get_enter_pkt(&self, id: Self::Id) -> Self::EnterPacket {
         ReactorEnterFieldResp {
             id,
@@ -37,7 +41,7 @@ impl PoolItem for Reactor {
 
     fn get_leave_pkt(&self, id: Self::Id, _param: Self::LeaveParam) -> Self::LeavePacket {
         ReactorLeaveFieldResp {
-            id: id,
+            id,
             state: self.state,
             pos: self.pos,
         }

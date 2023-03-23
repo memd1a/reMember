@@ -1,4 +1,4 @@
-use crate::entities::{equip_item, inventory_slot, item_stack};
+use crate::{entities::{equip_item, inventory_slot, item_stack}, services::{helper::intentory::{inv::{EquipInventory, InventorySet, InventoryExt, InventoryType, EquipItemSlot, StackInventory}, Inventory}, meta::meta_service::MetaService, model::item::{EquipItem, EquipStat, StackItem}}};
 use anyhow::anyhow;
 use itertools::Itertools;
 use num_enum::TryFromPrimitive;
@@ -8,18 +8,7 @@ use sea_orm::{
     QueryFilter, QuerySelect, Set,
 };
 
-use super::{
-    character::{CharacterID, ItemStarterSet},
-    helper::intentory::{
-        inv::{
-            EquipInventory, EquipItemSlot, InventoryExt, InventorySet, InventoryType,
-            StackInventory,
-        },
-        Inventory,
-    },
-    meta::meta_service::MetaService,
-    model::item::{EquipItem, EquipStat, StackItem},
-};
+use super::character::{ItemStarterSet, CharacterID};
 
 #[derive(Debug, Clone, Default)]
 pub struct CharacterEquippedItemIds {
@@ -63,7 +52,7 @@ fn map_equip_to_active_model(item: &EquipItem) -> equip_item::ActiveModel {
         vicious_hammers: Set(item.hammers_used as i32),
         //TODO optional
         owner_tag: Set(item.owner.clone().unwrap_or(String::new())),
-        level: Set(item.level as i32),
+        level: Set(0 as i32),
         upgrade_slots: Set(item.slots as i32),
         str: Set(stats[EquipStat::Str] as i32),
         dex: Set(stats[EquipStat::Dex] as i32),
@@ -104,7 +93,7 @@ impl ItemService {
     fn get_eq_item_from_id(&self, item_id: ItemId) -> anyhow::Result<EquipItem> {
         let item_meta = self
             .meta
-            .get_item_data(item_id)
+            .get_eq_data(item_id)
             .ok_or_else(|| anyhow!("Invalid item: {item_id:?}"))?;
 
         Ok(EquipItem::from_item_id(item_id, item_meta))
@@ -438,19 +427,12 @@ impl ItemService {
 #[cfg(test)]
 mod tests {
 
-    use crate::{
-        gen_sqlite,
-        services::{
-            account::{AccountId, AccountService, Region},
-            character::{CharacterCreateDTO, CharacterID, CharacterService, ItemStarterSet},
-            helper::intentory::inv::InventoryExt,
-            meta::meta_service::MetaService,
-        },
-    };
     use proto95::{
         id::{job_id::JobGroup, FaceId, HairId, Skin},
         shared::{inventory::EquippedSlot, Gender},
     };
+
+    use crate::{services::{meta::meta_service::MetaService, data::{account::{AccountId, Region}, character::{CharacterID, CharacterCreateDTO, ItemStarterSet}, AccountService, CharacterService}, helper::intentory::inv::InventoryExt}, gen_sqlite};
 
     use super::ItemService;
 
@@ -516,11 +498,9 @@ mod tests {
 
         svc.save_inventory(inv, char_id).await.unwrap();
         let inv = svc.load_inventory_for_character(char_id).await.unwrap();
-        dbg!(&inv);
         assert_eq!(inv.equipped.len(), 3);
         assert_eq!(inv.etc.get(0).unwrap().quantity, 1 + 5);
 
         let eq = svc.load_equipped_items(char_id).await.unwrap();
-        dbg!(&eq);
     }
 }

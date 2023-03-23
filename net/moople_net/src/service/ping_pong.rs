@@ -1,6 +1,6 @@
 use std::time::{Duration, Instant};
 
-use moople_packet::{MaplePacket, EncodePacket, HasOpcode, MaplePacketWriter};
+use moople_packet::{EncodePacket, HasOpcode, MaplePacket, MaplePacketWriter};
 
 pub struct PingPongConfig {
     pub interval: Duration,
@@ -18,7 +18,7 @@ impl Default for PingPongConfig {
 
 pub trait PingPongHandler {
     fn get_ping_packet(&self) -> MaplePacket;
-    fn get_pong_packet(&self) -> MaplePacket;    
+    fn get_pong_packet(&self) -> MaplePacket;
 
     fn handle_update(&mut self);
     fn is_timeout(&self) -> bool;
@@ -28,7 +28,7 @@ pub struct PacketPingPongHandler<Ping, Pong> {
     ping_packet: Ping,
     pong_packet: Pong,
     cfg: PingPongConfig,
-    last_update: Instant
+    last_update: Instant,
 }
 
 impl<Ping, Pong> PacketPingPongHandler<Ping, Pong> {
@@ -37,23 +37,30 @@ impl<Ping, Pong> PacketPingPongHandler<Ping, Pong> {
             ping_packet: ping_pkt,
             pong_packet: pong_pkt,
             cfg,
-            last_update: Instant::now()
+            last_update: Instant::now(),
         }
     }
 }
 
-
-impl<Ping, Pong> PingPongHandler for PacketPingPongHandler<Ping, Pong> where Ping: EncodePacket + HasOpcode, Pong: EncodePacket + HasOpcode {
+impl<Ping, Pong> PingPongHandler for PacketPingPongHandler<Ping, Pong>
+where
+    Ping: EncodePacket + HasOpcode,
+    Pong: EncodePacket + HasOpcode,
+{
     fn get_ping_packet(&self) -> MaplePacket {
         let mut pw = MaplePacketWriter::default();
-        self.ping_packet.encode_packet(&mut pw).expect("Ping packet encode must work");
+        self.ping_packet
+            .encode_packet(&mut pw)
+            .expect("Ping packet encode must work");
 
         pw.into_packet()
     }
 
     fn get_pong_packet(&self) -> MaplePacket {
         let mut pw = MaplePacketWriter::default();
-        self.pong_packet.encode_packet(&mut pw).expect("Pong packet encode must work");
+        self.pong_packet
+            .encode_packet(&mut pw)
+            .expect("Pong packet encode must work");
         pw.into_packet()
     }
 
@@ -63,7 +70,6 @@ impl<Ping, Pong> PingPongHandler for PacketPingPongHandler<Ping, Pong> where Pin
 
     fn handle_update(&mut self) {
         self.last_update = Instant::now()
-
     }
 
     fn update_interval(&self) -> Duration {

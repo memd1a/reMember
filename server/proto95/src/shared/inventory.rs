@@ -8,7 +8,7 @@ use moople_packet::{
     },
 };
 
-use crate::{recv_opcodes::RecvOpcodes, send_opcodes::SendOpcodes, id::ItemId};
+use crate::{id::ItemId, recv_opcodes::RecvOpcodes, send_opcodes::SendOpcodes};
 
 use super::item::Item;
 
@@ -91,8 +91,6 @@ pub struct InventoryInfo {
     etc: MapleIndexListZ8<Item>,
     cash: MapleIndexListZ8<Item>,
 }
-
-
 
 #[derive(Debug, MooplePacket)]
 pub struct SortItemsPacket {
@@ -236,18 +234,24 @@ pub struct ItemOptionUpgradeReq {
     pub timestamp: Ticks,
     pub use_slot: u16,
     pub equip_slot: u16,
-    pub enchant_skill: bool
+    pub enchant_skill: bool,
 }
-packet_opcode!(ItemOptionUpgradeReq, RecvOpcodes::UserItemOptionUpgradeItemUseRequest);
+packet_opcode!(
+    ItemOptionUpgradeReq,
+    RecvOpcodes::UserItemOptionUpgradeItemUseRequest
+);
 
 #[derive(Debug, MooplePacket)]
 pub struct ItemHyperUpgradeReq {
     pub timestamp: Ticks,
     pub use_slot: u16,
     pub equip_slot: u16,
-    pub enchant_skill: bool
+    pub enchant_skill: bool,
 }
-packet_opcode!(ItemHyperUpgradeReq, RecvOpcodes::UserHyperUpgradeItemUseRequest);
+packet_opcode!(
+    ItemHyperUpgradeReq,
+    RecvOpcodes::UserHyperUpgradeItemUseRequest
+);
 
 #[derive(Debug, MooplePacket)]
 pub struct ItemUpgradeReq {
@@ -255,7 +259,7 @@ pub struct ItemUpgradeReq {
     pub use_slot: u16,
     pub equip_slot: u16,
     pub white_scroll_slot: u16,
-    pub enchant_skill: bool
+    pub enchant_skill: bool,
 }
 packet_opcode!(ItemUpgradeReq, RecvOpcodes::UserUpgradeItemUseRequest);
 
@@ -263,15 +267,18 @@ packet_opcode!(ItemUpgradeReq, RecvOpcodes::UserUpgradeItemUseRequest);
 pub struct TamingMobUseFoodReq {
     pub timestamp: Ticks,
     pub food_slot: u16,
-    pub item_id: ItemId
+    pub item_id: ItemId,
 }
-packet_opcode!(TamingMobUseFoodReq, RecvOpcodes::UserTamingMobFoodItemUseRequest);
+packet_opcode!(
+    TamingMobUseFoodReq,
+    RecvOpcodes::UserTamingMobFoodItemUseRequest
+);
 
 #[derive(Debug, MooplePacket)]
 pub struct ItemOpenUIReq {
     pub timestamp: Ticks,
     pub slot: u16,
-    pub item_id: ItemId
+    pub item_id: ItemId,
 }
 packet_opcode!(ItemOpenUIReq, RecvOpcodes::UserUIOpenItemUseRequest);
 
@@ -279,13 +286,13 @@ packet_opcode!(ItemOpenUIReq, RecvOpcodes::UserUIOpenItemUseRequest);
 pub struct ItemLearnSkillReq {
     pub timestamp: Ticks,
     pub slot: u16,
-    pub item_id: ItemId
+    pub item_id: ItemId,
 }
 packet_opcode!(ItemLearnSkillReq, RecvOpcodes::UserSkillLearnItemUseRequest);
 
 #[derive(Debug, MooplePacket)]
 pub struct UserSitReq {
-    pub seat_id: u16
+    pub seat_id: u16,
 }
 
 impl UserSitReq {
@@ -294,9 +301,7 @@ impl UserSitReq {
     }
 
     pub fn seat(seat_id: u16) -> Self {
-        Self {
-            seat_id
-        }
+        Self { seat_id }
     }
 }
 packet_opcode!(UserSitReq, RecvOpcodes::UserSitRequest);

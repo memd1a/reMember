@@ -1,8 +1,6 @@
 use std::ops::RangeInclusive;
-use moople_packet::proto::wrapped::MapleWrapped;
 
 use crate::moople_id;
-
 
 moople_id!(MapId, u32);
 
@@ -13,7 +11,10 @@ impl MapId {
 
     // Aran tutorial / burning intro / godly stat
     pub fn is_aran_tutorial_map(&self) -> bool {
-        matches!(*self, Self::BURNING_FOREST_1 | Self::BURNING_FOREST_2 | Self::BURNING_FOREST_3)
+        matches!(
+            *self,
+            Self::BURNING_FOREST_1 | Self::BURNING_FOREST_2 | Self::BURNING_FOREST_3
+        )
     }
 
     pub fn is_cygnus_intro(&self) -> bool {
@@ -50,7 +51,10 @@ impl MapId {
     }
 
     pub fn is_fishing_area(&self) -> bool {
-        matches!(*self, Self::ON_THE_WAY_TO_THE_HARBOR | Self::PIER_ON_THE_BEACH | Self::PEACEFUL_SHIP)
+        matches!(
+            *self,
+            Self::ON_THE_WAY_TO_THE_HARBOR | Self::PIER_ON_THE_BEACH | Self::PEACEFUL_SHIP
+        )
     }
 }
 

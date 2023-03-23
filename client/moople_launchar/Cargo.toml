@@ -5,6 +5,12 @@ edition = "2021"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
+[profile.release]
+strip = true
+
 [dependencies]
 anyhow = "1.0.69"
+indicatif = "0.17.3"
 memchr = "2.5.0"
+shrooming = { version = "0.1.0", path = "../../server/shrooming" }
+tokio = { version = "1.26.0", features = ["full"] }

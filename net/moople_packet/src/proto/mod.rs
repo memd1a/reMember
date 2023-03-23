@@ -1,7 +1,7 @@
-pub mod geo;
 pub mod bits;
 pub mod conditional;
 pub mod constant;
+pub mod geo;
 pub mod list;
 pub mod maple_enum;
 pub mod option;
@@ -14,11 +14,10 @@ pub mod wrapped;
 
 use bytes::BufMut;
 
-use crate::{reader::MaplePacketReader, writer::MaplePacketWriter, NetResult};
+use crate::{reader::MaplePacketReader, writer::MaplePacketWriter, MaplePacket, NetResult};
 pub use conditional::{CondEither, CondOption};
 pub use list::{MapleIndexList, MapleList16, MapleList32, MapleList64, MapleList8};
-//pub use packed_bits::MaplePacked;
-pub use wrapped::{MapleTryWrapped, MapleWrapped};
+pub use wrapped::{PacketTryWrapped, PacketWrapped};
 
 pub trait DecodePacket<'de>: Sized {
     fn decode_packet(pr: &mut MaplePacketReader<'de>) -> NetResult<Self>;
@@ -56,7 +55,6 @@ pub trait DecodePacket<'de>: Sized {
             anyhow::bail!("Still remaining data: {:?}", r.remaining_slice());
         }
         Ok(res)
-        
     }
 }
 
@@ -76,6 +74,10 @@ pub trait EncodePacket: Sized {
         let mut pw = MaplePacketWriter::default();
         self.encode_packet(&mut pw)?;
         Ok(pw.into_inner().freeze())
+    }
+
+    fn to_packet(&self) -> NetResult<MaplePacket> {
+        Ok(MaplePacket::from_data(self.to_data()?))
     }
 }
 

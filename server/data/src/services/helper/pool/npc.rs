@@ -6,7 +6,7 @@ use proto95::{
     shared::{FootholdId, Range2, Vec2},
 };
 
-use super::PoolItem;
+use super::{PoolItem, next_id};
 
 #[derive(Debug)]
 pub struct Npc {
@@ -26,6 +26,10 @@ impl PoolItem for Npc {
     type LeavePacket = NpcLeaveFieldResp;
 
     type LeaveParam = ();
+
+    fn get_id(&self) -> Self::Id {
+        next_id()
+    }
 
     fn get_enter_pkt(&self, id: Self::Id) -> Self::EnterPacket {
         NpcEnterFieldResp {

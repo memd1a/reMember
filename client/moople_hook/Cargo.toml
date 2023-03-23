@@ -38,5 +38,6 @@ features = [
   "Win32_System_SystemServices",
   "Win32_System_Console",
   "Win32_UI_WindowsAndMessaging",
+  "Win32_Security"
 ]
 

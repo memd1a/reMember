@@ -11,13 +11,13 @@ use geo::Coord;
 use moople_derive::MooplePacket;
 use moople_packet::{
     mark_maple_enum, packet_opcode,
-    proto::{wrapped::MapleWrapped, MapleList16},
+    proto::{wrapped::PacketWrapped, MapleList16, string::FixedPacketString},
 };
 use num_enum::{IntoPrimitive, TryFromPrimitive};
 
 use crate::recv_opcodes::RecvOpcodes;
 
-pub type NameStr = arrayvec::ArrayString<13>;
+pub type NameStr = FixedPacketString<13>;
 
 #[derive(MooplePacket, Debug)]
 pub struct ClientDumpLogReq {
@@ -138,14 +138,14 @@ impl TryFrom<SocketAddr> for ServerSocketAddr {
     }
 }
 
-impl MapleWrapped for ServerAddr {
+impl PacketWrapped for ServerAddr {
     type Inner = [u8; 4];
 
-    fn maple_into_inner(&self) -> Self::Inner {
+    fn packet_into_inner(&self) -> Self::Inner {
         self.0.octets()
     }
 
-    fn maple_from(v: Self::Inner) -> Self {
+    fn packet_from(v: Self::Inner) -> Self {
         Self(Ipv4Addr::from(v))
     }
 }

@@ -1,14 +1,14 @@
-pub mod entity_ext;
-pub mod services;
-pub mod proto_mapper;
-pub mod util;
 pub mod entities;
+pub mod entity_ext;
+pub mod proto_mapper;
+pub mod services;
+pub mod util;
 
 use chrono::{NaiveDateTime, Utc};
-use entities::{account, ban, character, equip_item, pet_item, item_stack, inventory_slot};
+use entities::{account, ban, character, equip_item, inventory_slot, item_stack, pet_item, skill};
 use sea_orm::{
-    ActiveValue, ConnectOptions, ConnectionTrait, Database, DatabaseConnection,
-    DbBackend, DbErr, Schema,
+    ActiveValue, ConnectOptions, ConnectionTrait, Database, DatabaseConnection, DbBackend, DbErr,
+    Schema,
 };
 pub const SQL_OPT_MEMORY: &str = "sqlite::memory:";
 pub const SQL_OPT_TEST_FILE: &str = "sqlite://test.db?mode=rwc";
@@ -39,10 +39,14 @@ pub async fn gen_sqlite(opt: &str) -> Result<DatabaseConnection, DbErr> {
     .await?;
     db.execute(
         db.get_database_backend()
+            .build(&schema.create_table_from_entity(skill::Entity)),
+    )
+    .await?;
+    db.execute(
+        db.get_database_backend()
             .build(&schema.create_table_from_entity(ban::Entity)),
     )
     .await?;
-
 
     db.execute(
         db.get_database_backend()

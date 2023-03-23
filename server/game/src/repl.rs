@@ -16,11 +16,17 @@ pub enum ReplCmd {
     Chat { msg: String },
     FakeUser { id: u32 },
     Aggro,
-    Dispose
+    Dispose,
 }
 
 pub struct GameRepl {
     cli: Command,
+}
+
+impl Default for GameRepl {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl GameRepl {
@@ -64,8 +70,8 @@ impl GameHandler {
                         pos: self.pos,
                         fh: self.fh,
                         origin_fh: None,
-                        hp: 200,
-                        perc: 100
+                        hp: meta.max_hp,
+                        perc: 100,
                     })
                     .await?;
                 None
@@ -77,7 +83,7 @@ impl GameHandler {
                         pos: self.pos,
                         start_pos: self.pos,
                         value: DropTypeValue::Mesos(amount),
-                        quantity: 1
+                        quantity: 1,
                     })
                     .await?;
                 None
@@ -90,7 +96,7 @@ impl GameHandler {
                         pos: self.pos,
                         start_pos: self.pos,
                         value: DropTypeValue::Item(item),
-                        quantity: 1
+                        quantity: 1,
                     })
                     .await?;
                 None
@@ -98,6 +104,7 @@ impl GameHandler {
             ReplCmd::FakeUser { id } => {
                 self.field
                     .add_user(User {
+                        avatar_data: self.avatar_data.clone(),
                         char_id: id,
                         pos: self.pos,
                         fh: self.fh,
@@ -110,7 +117,7 @@ impl GameHandler {
                     .assign_mob_controller(self.handle.clone())
                     .await?;
                 None
-            },
+            }
             ReplCmd::Dispose => {
                 //TODO send packet
                 self.enable_char();

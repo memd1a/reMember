@@ -11,7 +11,7 @@ use proto95::{
 };
 use rand::Rng;
 
-use crate::services::model::item::{EquipStats, EquipStat};
+use crate::services::model::item::{EquipStat, EquipStats};
 
 #[derive(Debug)]
 pub struct DropEntry {
@@ -35,7 +35,7 @@ impl DropPool {
                 continue;
             }
 
-            drops.push((entry.item.clone(), rng.gen_range(1..=entry.max_quantity)))
+            drops.push((entry.item, rng.gen_range(1..=entry.max_quantity)))
         }
         drops
     }
@@ -70,6 +70,7 @@ pub struct MetaData {
     pub maps0: BTreeMap<i64, map::Map>,
     pub mobs: BTreeMap<u32, wz2::Mob>,
     pub items: BTreeMap<u32, wz2::Item>,
+    pub equips: BTreeMap<u32, wz2::Item>,
 }
 
 pub type FieldMeta = &'static map::Map;
@@ -88,6 +89,7 @@ impl MetaData {
             maps0: Self::load_from_file(dir.join("maps0.rbin"))?,
             mobs: wz2::load_all(dir.join("wz/Mob"))?,
             items: wz2::load_all(dir.join("wz/Item"))?,
+            equips: wz2::load_all(dir.join("wz/Equip"))?,
         })
     }
 }
@@ -95,7 +97,7 @@ impl MetaData {
 #[derive(Debug)]
 pub struct MetaService {
     meta_data: MetaData,
-    hard_coded_drop_pool: DropPool
+    hard_coded_drop_pool: DropPool,
 }
 
 impl MetaService {
@@ -116,7 +118,10 @@ impl MetaService {
             money: 1_000,
             money_variance: 970,
         };
-        Self { meta_data, hard_coded_drop_pool }
+        Self {
+            meta_data,
+            hard_coded_drop_pool,
+        }
     }
 
     pub fn load_from_dir(dir: PathBuf) -> anyhow::Result<Self> {
@@ -133,6 +138,10 @@ impl MetaService {
 
     pub fn get_item_data(&'static self, id: ItemId) -> Option<ItemMeta> {
         self.meta_data.items.get(&id.0)
+    }
+
+    pub fn get_eq_data(&'static self, id: ItemId) -> Option<ItemMeta> {
+        self.meta_data.equips.get(&id.0)
     }
 
     pub fn get_drops_for_mob(&'static self, _id: MobId) -> Option<DropsMeta> {

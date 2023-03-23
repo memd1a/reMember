@@ -9,7 +9,10 @@ use proto95::{
 };
 use rand::Rng;
 
-use crate::{entities::{equip_item, item_stack}, services::meta::meta_service::{ItemMeta, get_equip_stats}};
+use crate::{
+    entities::{equip_item, item_stack},
+    services::meta::meta_service::{get_equip_stats, ItemMeta},
+};
 
 #[derive(Debug, Enum, Clone)]
 pub enum EquipStat {
@@ -73,8 +76,8 @@ impl ItemInfo {
 #[derive(Debug, Clone)]
 pub struct EquipItem {
     pub info: ItemInfo,
-    pub level: u8,
     pub stats: EquipStats,
+    pub upgrades: u8,
     pub slots: u8,
     pub hammers_used: u8,
     pub level_info: Option<ItemLevelInfo>,
@@ -82,11 +85,29 @@ pub struct EquipItem {
 
 impl From<equip_item::Model> for EquipItem {
     fn from(value: equip_item::Model) -> Self {
+        let owner = if value.owner_tag.is_empty() {
+            None
+        } else {
+            Some(value.owner_tag.clone())
+        };
+
         //TODO
         let stats = enum_map! {
             EquipStat::Str => value.str as u16,
+            EquipStat::Dex => value.dex as u16,
+            EquipStat::Luk => value.luk as u16,
+            EquipStat::Int => value.int as u16,
+            EquipStat::Hp => value.hp as u16,
+            EquipStat::Mp => value.mp as u16,
             EquipStat::WeaponAtk => value.weapon_atk as u16,
-            _ => 0
+            EquipStat::WeaponDef => value.weapon_def as u16,
+            EquipStat::MagicAtk => value.magic_atk as u16,
+            EquipStat::MagicDef => value.magic_def as u16,
+            EquipStat::Accuracy => value.accuracy as u16,
+            EquipStat::Avoid => value.avoid as u16,
+            EquipStat::Speed => value.speed as u16,
+            EquipStat::Jump => value.jump as u16,
+            EquipStat::Craft => value.craft as u16,
         };
         Self {
             info: ItemInfo {
@@ -94,17 +115,17 @@ impl From<equip_item::Model> for EquipItem {
                 item_id: ItemId(value.item_id as u32),
                 cash_id: value.cash_id.map(|i| i as u64),
                 expiration: value.expires_at,
-                owner: None,
-                flags: proto_item::ItemFlags::from_bits(value.flags as u16).unwrap(), //TODO ::from(value.flags as u16),
+                owner: owner,
+                flags: proto_item::ItemFlags::from_bits(value.flags as u16).unwrap(),
                 last_update: 0,
             },
-            level: value.level as u8,
             hammers_used: value.vicious_hammers as u8,
             level_info: Some(ItemLevelInfo {
-                level: 0, //TODO
+                level: value.level as u8, //TODO
                 exp: value.item_exp as u32,
             }),
             slots: value.upgrade_slots as u8,
+            upgrades: 0,
             stats,
         }
     }
@@ -124,21 +145,25 @@ impl DerefMut for EquipItem {
     }
 }
 
+fn rnd_stat(mut rng: impl Rng, stat: u16) -> u16 {
+    if stat == 0 {
+        return 0;
+    }
+
+    rng.gen_range(stat.wrapping_sub(2)..=stat).max(1)
+}
+
 impl EquipItem {
-
-
-
     pub fn from_item_id(item_id: ItemId, meta: ItemMeta) -> Self {
         let mut rng = rand::thread_rng();
-        let stats = get_equip_stats(meta).map(|_, v| rng.gen_range(v.wrapping_sub(2)..=v));
-
+        let stats = get_equip_stats(meta).map(|_, v| rnd_stat(&mut rng, v));
         Self {
             info: ItemInfo::from_id(item_id),
-            level: 0,
             stats,
             slots: meta.slot_max as u8,
             hammers_used: 0,
             level_info: None,
+            upgrades: 0,
         }
     }
 
@@ -222,17 +247,17 @@ impl From<&EquipItem> for proto_item::EquipItemInfo {
             },
             stats: proto_item::EquipAllStats {
                 remaining_upgrade_slots: value.slots,
-                upgrade_count: 1,
+                upgrade_count: value.upgrades,
                 stats: map_eq_stats(&value.stats),
-                title: value.owner.clone().unwrap_or("aaa".to_string()),
+                title: value.owner.clone().unwrap_or("".to_string()),
                 flags: value.flags,
             },
             time_stamp: MapleTime::permanent(),
             lvl_up_ty: 0,
-            lvl: 0,
-            exp: 0,
+            lvl: value.level_info.as_ref().map(|l| l.level).unwrap_or(0),
+            exp: value.level_info.as_ref().map(|l| l.exp).unwrap_or(0),
             durability: -1,
-            hammer_count: 0,
+            hammer_count: value.hammers_used as u32,
             grade: 0,
             stars: 3,
             options: [0; 3],

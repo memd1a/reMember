@@ -2,14 +2,19 @@ use std::{fmt::Debug, io, marker::PhantomData, time::Duration};
 
 use futures::{Stream, StreamExt};
 use moople_packet::{MaplePacket, NetError};
-use tokio::{net::{TcpListener, TcpStream, ToSocketAddrs}, sync::mpsc};
+use tokio::{
+    net::{TcpListener, TcpStream, ToSocketAddrs},
+    sync::mpsc,
+};
 use tokio_stream::wrappers::ReceiverStream;
 use tokio_util::sync::CancellationToken;
 
 use crate::{codec::handshake::Handshake, service::handler::SessionError, MapleSession};
 
 use super::{
-    handler::{MakeServerSessionHandler, MapleServerSessionHandler, MapleSessionHandler, BroadcastSender},
+    handler::{
+        BroadcastSender, MakeServerSessionHandler, MapleServerSessionHandler, MapleSessionHandler,
+    },
     HandshakeGenerator,
 };
 
@@ -36,7 +41,7 @@ where
     async fn exec_server_session(
         mut session: MapleSession<H::Transport>,
         mut handler: H,
-        broadcast_rx: mpsc::Receiver<MaplePacket>,
+        session_tx: mpsc::Receiver<MaplePacket>,
         ct: CancellationToken,
     ) -> Result<(), SessionError<H::Error>>
     where
@@ -46,7 +51,7 @@ where
         let mut ping_interval = tokio::time::interval(H::get_ping_interval());
         ping_interval.tick().await;
 
-        let mut broadcast_rx = ReceiverStream::new(broadcast_rx);
+        let mut session_tx = ReceiverStream::new(session_tx);
 
         loop {
             //TODO might need some micro-optimization to ensure no future gets stalled
@@ -59,7 +64,7 @@ where
                         Err(net_err) => Err(SessionError::Net(net_err))
                     };
 
-                    
+
                     // If there's an error handle it
                     if let Err(err) = res {
                         log::info!("Err: {:?}", err);
@@ -86,11 +91,14 @@ where
                     log::info!("Sending ping packet: {:?}", ping_packet.data);
                     session.send_raw_packet(&ping_packet.data).await?;
                 },
-                //Handle broadcast packets
-                p = broadcast_rx.next() => {
+                //Handle external Session packets
+                p = session_tx.next() => {
                     // note tx is never dropped, so there'll be always a packet here
-                    let p = p.unwrap();
-                    log::info!("Sending broadcast packet... {}", p.data.len());
+                    let p = p.expect("Session packet");
+                    session.send_raw_packet(&p.data).await?;
+                },
+                p = handler.poll_broadcast() => {
+                    let p = p.map_err(SessionError::Session)?.expect("Must contain packet");
                     session.send_raw_packet(&p.data).await?;
                 },
                 _ = ct.cancelled() => {
@@ -100,7 +108,7 @@ where
             };
         }
 
-        session.shutdown().await?;
+        session.close().await?;
 
         // Normal cancellation by timeout or cancellation
         // TODO: handle panic and gracefully shutdown the session(for example write data to db and other stuff)

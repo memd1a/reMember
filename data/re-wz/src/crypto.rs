@@ -110,7 +110,6 @@ impl WzCrypto {
         if n <= WZ_KEY_BUFFER_LEN {
             self.transform_small(buf)
         } else {
-            dbg!(n);
             self.transform_large(buf)
         }
     }

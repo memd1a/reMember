@@ -4,7 +4,7 @@ use moople_packet::{
     proto::{
         option::MapleOption8,
         time::{MapleDurationMs16, MapleDurationMs32},
-        CondOption, MapleList32, MapleWrapped,
+        CondOption, MapleList32, PacketWrapped,
     },
 };
 
@@ -13,7 +13,7 @@ use crate::{
     maple_stats,
     recv_opcodes::RecvOpcodes,
     send_opcodes::SendOpcodes,
-    shared::{char::CharacterId, movement::MovePassivePath, FootholdId, TagPoint, Vec2},
+    shared::{char::CharacterId, movement::{MovePassivePath, MovePath}, FootholdId, TagPoint, Vec2},
     stats::PartialFlag,
 };
 
@@ -184,20 +184,34 @@ pub const NONE_FLY_TARGET_POS: TagPoint = TagPoint {
     y: 0xffddcc,
 };
 
-impl MapleWrapped for FlyTargetPoint {
+impl PacketWrapped for FlyTargetPoint {
     type Inner = TagPoint;
 
-    fn maple_into_inner(&self) -> Self::Inner {
-        self.0.clone().unwrap_or(NONE_FLY_TARGET_POS)
+    fn packet_into_inner(&self) -> Self::Inner {
+        self.0.unwrap_or(NONE_FLY_TARGET_POS)
     }
 
-    fn maple_from(v: Self::Inner) -> Self {
+    fn packet_from(v: Self::Inner) -> Self {
         match v {
             NONE_FLY_TARGET_POS => Self(None),
             _ => Self(Some(v)),
         }
     }
 }
+
+#[derive(MooplePacket, Debug)]
+pub struct MobMoveResp {
+    pub id: ObjectId,
+    pub not_force_landing: bool,
+    pub not_change_action: bool,
+    pub next_attack_possible: bool,
+    pub action_dir: u8,
+    pub data: u32,
+    pub multi_target: MapleList32<TagPoint>,
+    pub rand_time: MapleList32<u32>,
+    pub move_path: MovePath,
+}
+packet_opcode!(MobMoveResp, SendOpcodes::MobMove);
 
 #[derive(MooplePacket, Debug)]
 pub struct MobMoveReq {

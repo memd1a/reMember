@@ -1,6 +1,6 @@
 use moople_derive::MooplePacket;
 use moople_packet::{
-    maple_packet_enum, packet_opcode, proto::option::MapleOption8, DecodePacket, EncodePacket,
+    maple_packet_enum, packet_opcode, proto::{option::MapleOption8, string::FixedPacketString}, DecodePacket, EncodePacket,
     PacketLen,
 };
 
@@ -17,7 +17,7 @@ pub struct FriendRecord {
     pub name: NameStr,
     pub flag: u8,
     pub channel_id: u32,
-    pub friend_group: arrayvec::ArrayString<0x11>,
+    pub friend_group: FixedPacketString<0x11>,
 }
 
 #[derive(Debug)]

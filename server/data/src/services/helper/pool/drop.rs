@@ -14,9 +14,9 @@ use proto95::{
     shared::{char::CharacterId, Vec2},
 };
 
-use crate::services::session::session_set::SessionSet;
+use crate::services::{session::session_set::SessionSet, data::character::CharacterID};
 
-use super::{Pool, PoolItem};
+use super::{Pool, PoolItem, next_id};
 
 #[derive(Debug)]
 pub struct Drop {
@@ -51,6 +51,11 @@ impl PoolItem for Drop {
     type EnterPacket = DropEnterFieldResp;
     type LeavePacket = DropLeaveFieldResp;
     type LeaveParam = DropLeaveParam;
+
+
+    fn get_id(&self) -> Self::Id {
+        next_id()
+    }
 
     fn get_enter_pkt(&self, id: Self::Id) -> Self::EnterPacket {
         let (drop_type, expiration) = match self.value {
@@ -105,7 +110,7 @@ impl Pool<Drop> {
         &self,
         killed_mob: MobId,
         pos: Vec2,
-        killer: CharacterId,
+        killer: CharacterID,
         sessions: &SessionSet,
     ) -> anyhow::Result<()> {
         let Some(drops) = self.meta.get_drops_for_mob(killed_mob)  else {
@@ -117,13 +122,13 @@ impl Pool<Drop> {
         if money > 0 {
             self.add(
                 Drop {
-                    owner: DropOwner::User(killer),
+                    owner: DropOwner::User(killer as u32),
                     pos,
                     start_pos: pos,
                     value: DropTypeValue::Mesos(money),
                     quantity: 1
                 },
-                &sessions,
+                sessions,
             )
             .await?;
         }
@@ -131,7 +136,7 @@ impl Pool<Drop> {
         for (item, quantity) in items {
             self.add(
                 Drop {
-                    owner: DropOwner::User(killer),
+                    owner: DropOwner::User(killer as u32),
                     pos,
                     start_pos: pos,
                     value: DropTypeValue::Item(item),

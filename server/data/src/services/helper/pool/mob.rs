@@ -5,16 +5,16 @@ use proto95::{
         mob::{
             CarnivalTeam, LocalMobData, MobChangeControllerResp, MobDamagedResp, MobEnterFieldResp,
             MobHPIndicatorResp, MobId, MobInitData, MobLeaveFieldResp, MobLeaveType, MobSummonType,
-            MobTemporaryStatPartial, PartialMobTemporaryStat,
+            MobTemporaryStatPartial, PartialMobTemporaryStat, MobMoveReq, MobMoveResp,
         },
         ObjectId,
     },
-    shared::{FootholdId, Vec2},
+    shared::{FootholdId, Vec2, movement::Movement},
 };
 
-use crate::services::{meta::meta_service::MobMeta, session::session_set::SharedSessionDataRef};
+use crate::services::{meta::meta_service::MobMeta, session::session_set::{SharedSessionDataRef, SessionSet}, data::character::CharacterID};
 
-use super::{Pool, PoolItem};
+use super::{Pool, PoolItem, next_id};
 
 #[derive(Debug)]
 pub struct Mob {
@@ -46,6 +46,10 @@ impl PoolItem for Mob {
     type LeavePacket = MobLeaveFieldResp;
 
     type LeaveParam = MobLeaveType;
+
+    fn get_id(&self) -> Self::Id {
+        next_id()
+    }
 
     fn get_enter_pkt(&self, id: Self::Id) -> Self::EnterPacket {
         let empty_stats = PartialMobTemporaryStat {
@@ -106,7 +110,7 @@ impl Pool<Mob> {
                 .into(),
             }
             .encode_packet(&mut pw)?;
-            session.broadcast_tx.send(pw.into_packet()).await?;
+            session.session_tx.send(pw.into_packet()).await?;
         }
         Ok(())
     }
@@ -138,5 +142,28 @@ impl Pool<Mob> {
         })?;
 
         Ok(mob.is_dead())
+    }
+
+    pub fn mob_move(
+        &self,
+        id: ObjectId,
+        req: MobMoveReq,
+        controller: CharacterID,
+        sessions: &SessionSet
+    ) -> anyhow::Result<()> {
+        let pkt = MobMoveResp {
+            id,
+            not_force_landing: false,
+            not_change_action: false,
+            next_attack_possible: false,
+            action_dir: req.action_dir,
+            data: req.data,
+            multi_target: req.multi_target,
+            rand_time: req.rand_time,
+            move_path: req.move_path.path,
+        };
+
+        sessions.broadcast_pkt(pkt, controller)?;
+        Ok(())
     }
 }

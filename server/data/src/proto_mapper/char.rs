@@ -6,8 +6,6 @@ use proto95::{
 
 use crate::entities::character;
 
-
-
 impl From<&character::Model> for CharStat {
     fn from(char: &character::Model) -> Self {
         let job = JobId::try_from(char.job as u16).unwrap();

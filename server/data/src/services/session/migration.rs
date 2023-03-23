@@ -88,7 +88,7 @@ where
     }
 
     pub fn push(&self, key: K, data: V) {
-        //TODO: what to do if there's already a migration data entry for that IP
+        //TODO: what to do if there's already a migration data entry for that key
         self.pending
             .insert(key, MigrationContext::new(data, self.timeout));
     }

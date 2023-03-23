@@ -1,7 +1,8 @@
 use std::io::{Read, Write};
 
 use moople_packet::{
-    DecodePacket, EncodePacket, MaplePacketWriter, NetError, PacketLen, proto::wrapped::MapleWrapped,
+    proto::{string::FixedPacketString, wrapped::PacketWrapped},
+    DecodePacket, EncodePacket, MaplePacketWriter, NetError, PacketLen,
 };
 use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 
@@ -12,10 +13,12 @@ use crate::{
 
 use super::MAX_HANDSHAKE_LEN;
 
+pub type HandshakeBuf = [u8; MAX_HANDSHAKE_LEN + 2];
+
 #[derive(Debug, PartialEq, Eq, PartialOrd, Clone)]
 pub struct Handshake {
     pub version: u16,
-    pub subversion: String,
+    pub subversion: FixedPacketString<2>,
     pub iv_enc: RoundKey,
     pub iv_dec: RoundKey,
     pub locale: u8,
@@ -52,63 +55,70 @@ impl Handshake {
     }
 
     pub fn write_handshake<W: Write>(&self, mut w: W) -> NetResult<()> {
-        let (data, n) = self.encode_with_len();
-        //TODO: turmoil needs this right now cause the buffer is not implemented properly
-        w.write_all(&data[0..2])?;
-        w.write_all(&data[2..n])?;
+        let mut buf = HandshakeBuf::default();
+        let n = self.encode_with_len(&mut buf);
+        w.write_all(&buf[..n])?;
 
         Ok(())
     }
 
     pub async fn write_handshake_async<W: AsyncWrite + Unpin>(&self, mut w: W) -> NetResult<()> {
-        let (data, n) = self.encode_with_len();
-        //TODO: turmoil needs this right now cause the buffer is not implemented properly
-        w.write_all(&data[0..2]).await?;
-        w.write_all(&data[2..n]).await?;
+        let mut buf = HandshakeBuf::default();
+        let n = self.encode_with_len(&mut buf);
+
+        w.write_all(&buf[..n]).await?;
 
         Ok(())
     }
 
-    pub fn encode_with_len(&self) -> ([u8; MAX_HANDSHAKE_LEN], usize) {
+    pub fn encode_with_len(&self, buf: &mut HandshakeBuf) -> usize {
         let n = self.packet_len();
 
         //TODO return buffer with size somehow, use arrayvec? and impl bufmut?
-        let mut data = [0; MAX_HANDSHAKE_LEN];
-        let mut pw = MaplePacketWriter::new(data.as_mut());
+        let mut pw = MaplePacketWriter::new(buf.as_mut());
         pw.write_u16(n as u16);
         self.encode_packet(&mut pw).unwrap();
 
-        (data, n + 2)
+        n + 2
     }
 }
 
-impl MapleWrapped for Handshake {
-    type Inner = (u16, String, [u8; ROUND_KEY_LEN], [u8; ROUND_KEY_LEN], u8);
+impl PacketWrapped for Handshake {
+    type Inner = (
+        u16,
+        FixedPacketString<2>,
+        [u8; ROUND_KEY_LEN],
+        [u8; ROUND_KEY_LEN],
+        u8,
+    );
 
-    fn maple_into_inner(&self) -> Self::Inner {
+    fn packet_into_inner(&self) -> Self::Inner {
         (
             self.version,
             self.subversion.clone(),
             self.iv_enc.0,
             self.iv_dec.0,
-            self.locale
+            self.locale,
         )
     }
 
-    fn maple_from(v: Self::Inner) -> Self {
-        Self{
+    fn packet_from(v: Self::Inner) -> Self {
+        Self {
             version: v.0,
             subversion: v.1,
             iv_enc: RoundKey(v.2),
             iv_dec: RoundKey(v.3),
-            locale: v.4
+            locale: v.4,
         }
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use moople_packet::{DecodePacket, EncodePacket, MaplePacket, MaplePacketWriter};
+    use moople_packet::{
+        proto::string::FixedPacketString, DecodePacket, EncodePacket, MaplePacket,
+        MaplePacketWriter,
+    };
 
     use crate::crypto::RoundKey;
 
@@ -118,7 +128,7 @@ mod tests {
     fn test_handshake_encode_decode() {
         let handshake = Handshake {
             version: 1,
-            subversion: "2".to_string(),
+            subversion: FixedPacketString::try_from("2").unwrap(),
             iv_enc: RoundKey([1u8; 4]),
             iv_dec: RoundKey([2u8; 4]),
             locale: 5,

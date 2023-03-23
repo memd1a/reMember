@@ -139,7 +139,7 @@ impl<'a> MaplePacketReader<'a> {
 
     pub fn read_string_limited(&mut self, limit: usize) -> NetResult<&'a str> {
         let n = self.read_u16()? as usize;
-        if n >= limit {
+        if n > limit {
             return Err(NetError::StringLimit(limit));
         }
 

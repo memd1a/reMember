@@ -1,4 +1,4 @@
-use std::fmt::Debug;
+use std::{fmt::Debug, slice};
 use std::marker::PhantomData;
 
 use bytes::BufMut;
@@ -50,6 +50,12 @@ impl_list_index!(u64);
 #[derive(Debug, Clone)]
 pub struct MapleIndexList<I, T> {
     pub items: Vec<(I, T)>,
+}
+
+impl<I, T> MapleIndexList<I, T> {
+    pub fn iter(&self) -> slice::Iter<'_, (I, T)> {
+        self.items.iter()
+    }
 }
 
 impl<I, T> From<Vec<(I, T)>> for MapleIndexList<I, T> {
@@ -121,10 +127,16 @@ pub struct MapleIndexListZ<I, T> {
     pub items: Vec<(I, T)>,
 }
 
+impl<I, T> MapleIndexListZ<I, T> {
+    pub fn iter(&self) -> slice::Iter<'_, (I, T)> {
+        self.items.iter()
+    }
+}
+
 impl<I, E> FromIterator<(I, E)> for MapleIndexListZ<I, E> {
     fn from_iter<T: IntoIterator<Item = (I, E)>>(iter: T) -> Self {
         Self {
-            items: iter.into_iter().collect()
+            items: iter.into_iter().collect(),
         }
     }
 }
@@ -198,6 +210,11 @@ pub struct MapleList<I, T> {
     pub _index: PhantomData<I>,
 }
 
+impl<I, T> MapleList<I, T> {
+    pub fn iter(&self) -> slice::Iter<'_, T> {
+        self.items.iter()
+    }
+}
 
 impl<I, E> FromIterator<E> for MapleList<I, E> {
     fn from_iter<T: IntoIterator<Item = E>>(iter: T) -> Self {

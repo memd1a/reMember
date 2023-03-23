@@ -3,13 +3,13 @@ use proto95::{
     login::char::{DeleteCharResult, SelectCharResultCode},
     shared::Gender,
 };
-use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, QuerySelect, Set};
+use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, QuerySelect, Set, ActiveModelTrait};
 
 use crate::{
     created_at,
     entities::{
         account,
-        character::{ActiveModel, Column, Entity, Model},
+        character::{ActiveModel, Column, Entity, Model, self},
         skill,
     },
 };
@@ -197,6 +197,8 @@ impl CharacterService {
             ap: Set(0),
             sp: Set(10),
             spawn_point: Set(0),
+            skill_points: Set(vec![0; 20]),
+            play_time: Set(0),
             ..Default::default()
         };
 
@@ -262,5 +264,10 @@ impl CharacterService {
             .filter(skill::Column::CharId.eq(id))
             .all(&self.db)
             .await?)
+    }
+
+    pub async fn save_char(&self, char: character::ActiveModel) -> anyhow::Result<()> {
+        char.save(&self.db).await?;
+        Ok(())
     }
 }

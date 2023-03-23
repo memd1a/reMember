@@ -169,9 +169,6 @@ impl SchemaStruct {
         }
 
         let ty_name = fmt_type_name(name);
-        dbg!(&name);
-        dbg!(fmt_type_name(&name));
-        dbg!(&ty_name);
         let name_ident = format_ident!("{}", ty_name);
 
         let fields = self.0.iter().map(|(name, v)| {

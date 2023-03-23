@@ -5,15 +5,10 @@ use std::{net::IpAddr, time::Duration};
 
 use async_trait::async_trait;
 use config::LoginConfig;
-use data::entities::character;
-use data::services::session::session_data::MoopleSessionData;
-use data::services::session::MoopleMigrationKey;
-use data::services::{
-    self,
-    account::AccountServiceError,
-    character::{CharacterCreateDTO, ItemStarterSet},
-    session::ClientKey,
-};
+use data::services::data::account::AccountServiceError;
+use data::services::data::character::{ItemStarterSet, CharacterCreateDTO, CharacterID};
+use data::{entities::character, services};
+use data::services::session::{MoopleMigrationKey, ClientKey};
 use login_state::LoginState;
 use moople_net::{
     maple_router_handler,
@@ -27,9 +22,9 @@ use moople_packet::{
     proto::{list::MapleIndexList8, time::MapleTime, MapleList8},
     HasOpcode, MaplePacket, MaplePacketReader, MaplePacketWriter,
 };
-use proto95::id::SkillId;
-use proto95::shared::ExceptionLogReq;
+
 use proto95::shared::char::AvatarEquips;
+use proto95::shared::ExceptionLogReq;
 use proto95::{
     id::{FaceId, HairId, ItemId, Skin},
     login::{
@@ -184,7 +179,7 @@ impl LoginHandler {
         }
 
         self.state
-            .update_account(|acc| self.services.account.accept_tos(acc))
+            .update_account(|acc| self.services.data.account.accept_tos(acc))
             .await?;
         self.state.reset_login();
 
@@ -197,7 +192,7 @@ impl LoginHandler {
         let result = if self.cfg.enable_pin {
             match req.pin.opt {
                 Some(pin) => {
-                    if self.services.account.check_pin(acc, &pin.pin)? {
+                    if self.services.data.account.check_pin(acc, &pin.pin)? {
                         CheckPinResult::Accepted
                     } else {
                         CheckPinResult::InvalidPin
@@ -221,7 +216,7 @@ impl LoginHandler {
         };
 
         self.state
-            .update_account(|acc| self.services.account.set_pin(acc, pin))
+            .update_account(|acc| self.services.data.account.set_pin(acc, pin))
             .await?;
 
         Ok(UpdatePinResp { success: true }.into())
@@ -236,7 +231,7 @@ impl LoginHandler {
             .ok_or_else(|| anyhow::format_err!("Gender not set"))?;
 
         self.state
-            .update_account(|acc| self.services.account.set_gender(acc, gender.into()))
+            .update_account(|acc| self.services.data.account.set_gender(acc, gender.into()))
             .await?;
 
         self.state.transition_login().unwrap();
@@ -300,7 +295,7 @@ impl LoginHandler {
     ) -> LoginResult<CheckPasswordResp> {
         log::info!("handling check pw: {:?}", req);
 
-        let login_result = self.services.account.try_login(&req.id, &req.pw).await;
+        let login_result = self.services.data.account.try_login(&req.id, &req.pw).await;
 
         let hdr = LoginResultHeader::default();
 
@@ -352,7 +347,8 @@ impl LoginHandler {
         log::info!("Char list request");
         let char_list = self
             .services
-            .character
+            .data
+            .char
             .get_characters_for_account(acc.id)
             .await?;
         let characters: MapleList8<_> = char_list.iter().map(map_char_with_rank).collect();
@@ -374,7 +370,7 @@ impl LoginHandler {
         req: CheckDuplicateIDReq,
     ) -> anyhow::Result<LoginResponse<CheckDuplicateIDResp>> {
         let _ = self.state.get_char_select()?;
-        let name_used = !self.services.character.check_name(&req.name).await?;
+        let name_used = !self.services.data.char.check_name(&req.name).await?;
 
         let resp = if name_used {
             CheckDuplicateIDResp {
@@ -404,7 +400,8 @@ impl LoginHandler {
 
         let char_id = self
             .services
-            .character
+            .data
+            .char
             .create_character(
                 acc.id,
                 CharacterCreateDTO {
@@ -417,11 +414,11 @@ impl LoginHandler {
                     starter_set,
                     gender: req.gender,
                 },
-                &self.services.item,
+                &self.services.data.item,
             )
             .await?;
 
-        let char = self.services.character.get(char_id).await?.unwrap();
+        let char = self.services.data.char.get(char_id).await?.unwrap();
         Ok(CreateCharResp::Success(map_char(&char)).into())
     }
 
@@ -429,7 +426,8 @@ impl LoginHandler {
         let (acc, _, _) = self.state.get_char_select()?;
         let status = self
             .services
-            .character
+            .data
+            .char
             .delete_character(acc, req.char_id as i32, &req.pic)
             .await?;
 
@@ -453,31 +451,16 @@ impl LoginHandler {
         let (_, world, channel) = self.state.get_char_select()?;
 
         let acc = self.state.claim_account()?;
-        let char_id = req.char_id as i32;
-        // TODO(IMPORTANT), get the character from the account don't allow ANY char here
-        let char = self.services.character.must_get(req.char_id as i32).await?;
-
-        let inv = self
-            .services
-            .item
-            .load_inventory_for_character(char_id)
-            .await?;
-
-        let skills = self
-            .services
-            .character
-            .load_skills(char_id)
-            .await?
-            .into_iter()
-            .map(|skill| (SkillId(skill.id as u32), skill))
-            .collect();
 
         let client_key = self.client_key.expect("Must have client key");
 
-        self.services.session_manager.create_migration_session(
-            MoopleMigrationKey::new(client_key, self.addr),
-            MoopleSessionData { acc, char, inv, skills },
-        )?;
+        self.services
+            .session_manager
+            .create_migration_session(
+                MoopleMigrationKey::new(client_key, self.addr),
+                (acc, req.char_id as CharacterID),
+            )
+            .await?;
 
         let addr = self.services.server_info.get_channel_addr(world, channel)?;
         let migrate = MigrateStageInfo {

@@ -27,18 +27,18 @@ use detour::static_detour;
 use packet_struct::RECV_PACKET_CTX;
 use std::ffi::c_void;
 use std::sync::atomic::Ordering;
-use std::sync::{LazyLock, atomic::AtomicBool};
-use std::time::{ Duration, Instant };
+use std::sync::{atomic::AtomicBool, LazyLock};
+use std::time::{Duration, Instant};
+use windows::Win32::Security::SECURITY_ATTRIBUTES;
 use windows::Win32::Storage::FileSystem::{FindFileHandle, WIN32_FIND_DATAA};
 
 use strings::dump_string_pool;
 use windows::core::{GUID, HRESULT, PCSTR};
-use windows::Win32::Foundation::{BOOL, HINSTANCE};
+use windows::Win32::Foundation::{BOOL, HANDLE, HINSTANCE};
 use windows::Win32::System::Console::AllocConsole;
 use windows::Win32::System::LibraryLoader::{GetModuleHandleW, GetProcAddress, LoadLibraryA};
 use windows::Win32::System::SystemServices::{DLL_PROCESS_ATTACH, DLL_PROCESS_DETACH};
 use windows::{s, w};
-
 
 use crate::util::nop;
 
@@ -63,8 +63,6 @@ fn cxx_throw_exception_8_detour(ex_obj: *const c_void, throw_info: *const c_void
     unsafe { CxxThrowExceptionHook.call(ex_obj, throw_info) }
 }
 
-
-
 static_detour! {
     static FindFirstFileAHook: unsafe extern "system" fn(PCSTR, *mut WIN32_FIND_DATAA) -> FindFileHandle;
 }
@@ -74,16 +72,39 @@ fn find_first_file_detour(
     find_file_data: *mut WIN32_FIND_DATAA,
 ) -> FindFileHandle {
     static SPOOFED_PROXY_DLL: AtomicBool = AtomicBool::new(false);
-    if  !file_name.is_null() && unsafe { file_name.as_bytes() } == b"*" {
+    if !file_name.is_null() && unsafe { file_name.as_bytes() } == b"*" {
         //Only spoof once at start
         if !SPOOFED_PROXY_DLL.fetch_or(true, Ordering::SeqCst) {
             log::info!("Spoofing FindFirstFileA for proxy dll");
             // Just let it iterate over wz files
-            return unsafe { FindFirstFileAHook.call(windows::s!("*.wz"), find_file_data) }
-
+            return unsafe { FindFirstFileAHook.call(windows::s!("*.wz"), find_file_data) };
         }
     }
     unsafe { FindFirstFileAHook.call(file_name, find_file_data) }
+}
+
+static_detour! {
+    static CreateMutexAHook: unsafe extern "system" fn(*const SECURITY_ATTRIBUTES, BOOL, PCSTR) -> HANDLE;
+}
+type FnCreateMutexA = unsafe extern "system" fn(*const SECURITY_ATTRIBUTES, BOOL, PCSTR) -> HANDLE;
+fn create_mutex_a_detour(
+    lpmutexattributes: *const SECURITY_ATTRIBUTES,
+    binitialowner: BOOL,
+    name: PCSTR,
+) -> HANDLE {
+    if !name.is_null() {
+        let data = unsafe { name.as_bytes() };
+        let name = std::str::from_utf8(data).unwrap();
+        log::info!("CreateMutexA - name: {name}");
+
+        // Add pid to the name to support multi client
+        let pid = std::process::id();
+        let new_name = format!("{name}_{pid}");
+        let p_new_name = PCSTR::from_raw(new_name.as_ptr());
+
+        return unsafe { CreateMutexAHook.call(lpmutexattributes, binitialowner, p_new_name) };
+    }
+    unsafe { CreateMutexAHook.call(lpmutexattributes, binitialowner, name) }
 }
 
 type FDirectInput8Create = unsafe extern "stdcall" fn(
@@ -117,7 +138,9 @@ fn initialize() {
     unsafe { AllocConsole() };
 
     // Patches
-    unsafe { stage_0_hooks(); }
+    unsafe {
+        stage_0_hooks();
+    }
 
     // No logo
     unsafe { nop(0x60e2db as *mut u8, 16).unwrap() };
@@ -134,8 +157,7 @@ fn init_hooks() -> anyhow::Result<()> {
     log::info!("Hooking...");
 
     unsafe {
-
-        socket::init_hooks()?;
+        //socket::init_hooks()?;
 
         CxxThrowExceptionHook
             .initialize(*cxx_throw_exception, cxx_throw_exception_8_detour)?
@@ -170,13 +192,21 @@ unsafe extern "stdcall" fn DirectInput8Create(
 
 unsafe fn stage_0_hooks() {
     // Hooks which are required for this dll to work
-    let handle = GetModuleHandleW(w!("kernel32.dll"))
-        .unwrap();
+    let handle = GetModuleHandleW(w!("kernel32.dll")).unwrap();
     let find_first_file_a: FnFindFirstFileA =
         std::mem::transmute(GetProcAddress(handle, s!("FindFirstFileA")));
 
     FindFirstFileAHook
         .initialize(find_first_file_a, find_first_file_detour)
+        .unwrap()
+        .enable()
+        .unwrap();
+
+    let create_mutex_a: FnCreateMutexA =
+        std::mem::transmute(GetProcAddress(handle, s!("CreateMutexA")));
+
+    CreateMutexAHook
+        .initialize(create_mutex_a, create_mutex_a_detour)
         .unwrap()
         .enable()
         .unwrap();
@@ -188,7 +218,7 @@ extern "system" fn DllMain(dll_module: HINSTANCE, call_reason: u32, reserved: *m
     match call_reason {
         DLL_PROCESS_ATTACH => {
             initialize();
-        },
+        }
         DLL_PROCESS_DETACH => (),
         _ => (),
     }

@@ -7,7 +7,7 @@ use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, Set};
 use thiserror::Error;
 
 use crate::created_at;
-use crate::entities::account::{Model, Entity, ActiveModel, Column};
+use crate::entities::account::{ActiveModel, Column, Entity, Model};
 use crate::entities::ban;
 use crate::entities::sea_orm_active_enums::GenderTy;
 
@@ -109,13 +109,6 @@ impl AccountService {
 
         let res = Entity::insert(acc).exec(&self.db).await?;
         Ok(res.last_insert_id)
-    }
-
-    pub async fn find_account_by_username(&self, username: &str) -> anyhow::Result<Option<Model>> {
-        Ok(Entity::find()
-            .filter(Column::Username.eq(username))
-            .one(&self.db)
-            .await?)
     }
 
     pub async fn try_login(&self, username: &str, password: &str) -> AccResult<Model> {
@@ -221,7 +214,7 @@ impl AccountService {
 mod tests {
     use sea_orm::DatabaseConnection;
 
-    use crate::{services::account::Region, entities::sea_orm_active_enums::GenderTy};
+    use crate::{entities::sea_orm_active_enums::GenderTy, services::data::account::Region};
 
     use super::AccountService;
 

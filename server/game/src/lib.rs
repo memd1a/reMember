@@ -7,9 +7,10 @@ use std::{net::IpAddr, time::Duration};
 
 use async_trait::async_trait;
 
+use data::entities::character;
 use data::services::field::FieldJoinHandle;
 use data::services::helper::pool::drop::{DropLeaveParam, DropTypeValue};
-use data::services::session::session_data::MoopleSessionHolder;
+use data::services::session::session_data::OwnedMoopleSession;
 use data::services::session::session_set::{SharedSessionData, SharedSessionDataRef};
 use data::services::session::{ClientKey, MoopleMigrationKey};
 use data::services::SharedServices;
@@ -30,7 +31,7 @@ use moople_net::{
 
 use moople_packet::EncodePacket;
 
-use moople_packet::proto::list::MapleIndexListZ;
+use moople_packet::proto::list::{MapleIndexListZ, MapleIndexList8};
 use moople_packet::proto::time::MapleExpiration;
 use moople_packet::{
     proto::{
@@ -49,7 +50,8 @@ use proto95::game::user::{
     UserMeleeAttackReq, UserSkillUpReq,
 };
 
-use proto95::shared::char::{SkillInfo, TeleportRockInfo};
+use proto95::id::{FaceId, HairId, ItemId, Skin};
+use proto95::shared::char::{SkillInfo, TeleportRockInfo, AvatarData, AvatarEquips, PetIds};
 use proto95::shared::movement::Movement;
 use proto95::shared::{FootholdId, Vec2};
 use proto95::{
@@ -131,7 +133,7 @@ impl MakeServerSessionHandler for MakeGameHandler {
 }
 
 pub struct GameHandler {
-    session: MoopleSessionHolder,
+    session: OwnedMoopleSession,
     channel_id: ChannelId,
     world_id: WorldId,
     services: SharedServices,
@@ -143,6 +145,7 @@ pub struct GameHandler {
     field: FieldJoinHandle,
     repl: GameRepl,
     packet_buf: PacketBuffer,
+    avatar_data: AvatarData
 }
 
 impl GameHandler {
@@ -183,8 +186,10 @@ impl GameHandler {
         );
 
         let handle = Arc::new(SharedSessionData {
-            broadcast_tx: broadcast_tx.clone(),
+            session_tx: broadcast_tx.clone(),
         });
+
+        let avatar_data = map_char_to_avatar(&session.char);
 
         let mut packet_buf = PacketBuffer::new();
 
@@ -192,6 +197,7 @@ impl GameHandler {
             .field
             .join_field(
                 session.char.id,
+                avatar_data.clone(),
                 handle.clone(),
                 &mut packet_buf,
                 MapId(session.char.map_id as u32),
@@ -211,6 +217,7 @@ impl GameHandler {
             field: join_field,
             packet_buf,
             repl: GameRepl::new(),
+            avatar_data
         })
     }
 }
@@ -219,6 +226,15 @@ impl GameHandler {
 impl MapleSessionHandler for GameHandler {
     type Transport = TcpStream;
     type Error = anyhow::Error;
+
+    async fn poll_broadcast(&mut self) -> Result<Option<MaplePacket>, Self::Error> {
+        loop {
+            let (char_src, pkt) = self.field.field_broadcast_rx.recv().await?;
+            if char_src != self.session.char.id {
+                break Ok(Some(pkt))
+            }
+        }
+    }
 
     async fn handle_packet(
         &mut self,
@@ -281,7 +297,6 @@ impl MapleServerSessionHandler for GameHandler {
 
 impl GameHandler {
     async fn handle_skill_up(&mut self, req: UserSkillUpReq) -> GameResult<ChangeSkillRecordResp> {
-        dbg!(&req);
         Ok(ChangeSkillRecordResp {
             reset_excl: true,
             skill_records: vec![UpdatedSkillRecord {
@@ -312,7 +327,6 @@ impl GameHandler {
             stats: PartialFlag {
                 hdr: (),
                 data: CharStatPartial {
-                    level: Some(50).into(),
                     ..CharStatPartial::default()
                 },
             },
@@ -468,7 +482,7 @@ impl GameHandler {
                 .attack_mob(
                     target.mob_id,
                     dmg,
-                    self.session.char.id as u32,
+                    self.session.char.id as i32,
                     &mut self.packet_buf,
                 )
                 .await?;
@@ -524,7 +538,7 @@ impl GameHandler {
             pw.write_opcode(UserChatMsgResp::OPCODE);
             resp.encode_packet(&mut pw)?;
 
-            self.handle.broadcast_tx.send(pw.into_packet()).await?;
+            self.handle.session_tx.send(pw.into_packet()).await?;
         } else {
             self.field
                 .add_chat(UserChatMsgResp {
@@ -532,18 +546,20 @@ impl GameHandler {
                     is_admin: admin,
                     msg: req.msg,
                     only_balloon: req.only_balloon,
-                })
-                .await?;
+                })?;
         };
         Ok(())
     }
 
     async fn handle_mob_move(&mut self, req: MobMoveReq) -> GameResult<MobMoveCtrlAckResp> {
-        self.field.update_mob_pos(&req).await?;
+        let ctrl_sn = req.ctrl_sn;
+        let id = req.id;
+
+        self.field.update_mob_pos(req, self.session.char.id).await?;
 
         Ok(MobMoveCtrlAckResp {
-            id: req.id,
-            ctrl_sn: req.ctrl_sn,
+            id,
+            ctrl_sn,
             next_atk_possible: false,
             mp: 0,
             skill_id: 0,
@@ -590,6 +606,7 @@ impl GameHandler {
             .field
             .join_field(
                 self.session.char.id,
+                self.avatar_data.clone(),
                 self.handle.clone(),
                 &mut self.packet_buf,
                 MapId(self.session.char.map_id as u32),
@@ -605,7 +622,6 @@ impl GameHandler {
         let last_fh = req
             .move_path
             .moves
-            .items
             .iter()
             .rev()
             .find_map(|mv| match mv {
@@ -617,6 +633,8 @@ impl GameHandler {
             self.fh = fh;
         }
         log::info!("User move req @ {:?}", req.move_path.pos);
+
+        self.field.update_user_pos(req, self.session.char.id).await?;
         Ok(())
     }
 
@@ -637,5 +655,26 @@ impl GameHandler {
         .into_response(MigrateCommandResp::OPCODE);
 
         Ok(MigrateResponse(pkt))
+    }
+}
+
+pub fn map_char_to_avatar(char: &character::Model) -> AvatarData {
+    AvatarData {
+        gender: (&char.gender).into(),
+        skin: Skin::try_from(char.skin as u8).unwrap(),
+        mega: true,
+        face: FaceId(char.face as u32),
+        hair: HairId(char.hair as u32),
+        equips: AvatarEquips {
+            equips: MapleIndexList8::from(vec![
+                (5, ItemId(1040006)),
+                (6, ItemId(1060006)),
+                (7, ItemId(1072005)),
+                (11, ItemId(1322005)),
+            ]),
+            masked_equips: MapleIndexList8::from(vec![]),
+            weapon_sticker_id: ItemId(0),
+        },
+        pets: PetIds::default(),
     }
 }
