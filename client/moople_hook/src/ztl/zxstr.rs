@@ -71,7 +71,7 @@ impl<T> ZXString<T> {
     }
 }
 
-//TODO add dropping
+
 
 impl ZXString<u8> {
     pub fn get_str(&self) -> Option<&str> {

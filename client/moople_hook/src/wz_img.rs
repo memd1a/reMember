@@ -70,7 +70,7 @@ bitflags! {
         const AUTO_REPARSE_MASK = 0x30;
         const DEFAULT_AUTO_SERIALIZE = 0;
         const DEFAULT_AUTO_REPARSE = 0;
-        const RC_AUTO_SERIALIZE_MASK =  Self::AUTO_SERIALIZE.bits | Self::AUTO_SERIALIZE_NO_CACHE.bits | Self::NO_AUTO_SERIALIZE.bits;
+        const RC_AUTO_SERIALIZE_MASK =  (Self::AUTO_SERIALIZE.bits() | Self::AUTO_SERIALIZE_NO_CACHE.bits() | Self::NO_AUTO_SERIALIZE.bits());
     }
 }
 fn_ref2!(

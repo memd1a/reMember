@@ -10,6 +10,10 @@ crate-type = ["cdylib"]
 [profile.release]
 strip = true
 
+[features]
+overlay = ["imgui", "hudhook"]
+default = []
+
 [dependencies]
 anyhow = "1.0.68"
 serde = { version = "1.0", features = ["derive"] }
@@ -17,14 +21,15 @@ serde_json = "1.0.91"
 detour = { git = "https://github.com/veeenu/detour-rs" }
 region = "3.0.0"
 log = "0.4.17"
-env_logger = "0.10.0"
-pretty_env_logger = "0.4.0"
-naked-function = "0.1.1"
 paste = "1.0.11"
-bitflags = "1.3.2"
+bitflags = "2.0"
+simplelog = "0.12.1"
+hudhook = { git = "https://github.com/veeenu/hudhook", optional = true }
+imgui = { version = "0.9.0", optional = true }
+const_format = "0.2.30"
 
 [dependencies.windows]
-version = "0.44.0"
+version = "0.47.0"
 features = [
   "Win32_System_LibraryLoader",
   "Win32_Storage_FileSystem",
@@ -38,6 +43,8 @@ features = [
   "Win32_System_SystemServices",
   "Win32_System_Console",
   "Win32_UI_WindowsAndMessaging",
-  "Win32_Security"
+  "Win32_Security",
+  "Win32_System_SystemInformation",
+  "Win32_UI_Shell"
 ]
 
