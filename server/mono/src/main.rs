@@ -1,14 +1,19 @@
 use std::net::{IpAddr, SocketAddr};
 
-use data::services::{server_info::ServerInfo, Services, SharedServices, meta::meta_service::MetaService};
+use data::services::{
+    meta::meta_service::MetaService, server_info::ServerInfo, Services, SharedServices,
+};
 use login::{config::LoginConfig, LoginHandler};
 use moople_net::service::{
-    handler::{MakeServerSessionHandler, BroadcastSender}, session_svc::{MapleServer, SharedSessionHandle}, BasicHandshakeGenerator,
-    HandshakeGenerator,
+    handler::{BroadcastSender, MakeServerSessionHandler},
+    session_svc::{MapleServer, SharedSessionHandle},
+    BasicHandshakeGenerator, HandshakeGenerator,
 };
 use tokio::{net::TcpStream, task::JoinSet};
 
-use shrooming::{FileSvr, FileIndex};
+use shrooming::{FileIndex, FileSvr};
+
+mod config;
 
 static LOGIN_CFG: &LoginConfig = &LoginConfig {
     enable_pic: true,
@@ -34,7 +39,7 @@ impl MakeServerSessionHandler for MakeLoginHandler {
     async fn make_handler(
         &mut self,
         sess: &mut moople_net::MapleSession<Self::Transport>,
-        _broadcast_tx: SharedSessionHandle
+        _broadcast_tx: SharedSessionHandle,
     ) -> Result<Self::Handler, Self::Error> {
         Ok(LoginHandler::new(
             self.services.clone(),
@@ -74,67 +79,61 @@ async fn srv_shrooming(addr: SocketAddr) -> anyhow::Result<()> {
         [
             "notes.txt",
             "../../client/moople_hook/target/i686-pc-windows-gnu/release/dinput8.dll",
-            "../../target/i686-pc-windows-gnu/release/moople_launchar.exe"
-        ].iter()
+            "../../target/i686-pc-windows-gnu/release/moople_launchar.exe",
+        ]
+        .iter(),
     )?;
 
-    FileSvr::new(file_ix)
-        .serve(addr)
-        .await?;
+    FileSvr::new(file_ix).serve(addr).await?;
 
     Ok(())
 }
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
-    // Config
-    const VERSION: &str = "v0.1a";
-    const SERVER_NAME: &str = "reMember";
-    const WORLDS: usize = 1;
-    const CHANNELS: usize = 3;
-    // Base port, this will be the port of the Login Server
-    // Channel ports will be BASE_PORT + 1 + ch
-    const BASE_PORT: u16 = 8484;
-    const SHROOMING_PORT: u16 = 8490;
-    // Change this to your external ip address
-    const EXTERNAL_IP: &str = "192.168.124.1";
-    // This is the bind addr, 0.0.0.0 means listen on all IPs
-    const BIND_IP: &str = "0.0.0.0";
-
     pretty_env_logger::init();
-    log::info!("{SERVER_NAME} - Mono - {VERSION}");
+    // Load configuration
+    let settings = config::get_configuration().expect("Failed to load configuration");
+    log::info!("{0} - Mono - {1}", settings.server_name, settings.version);
 
-    
-    let server_addr: IpAddr = EXTERNAL_IP.parse()?;
-    let bind_addr: IpAddr = BIND_IP.parse()?;
+    let server_addr: IpAddr = settings.external_ip.parse()?;
+    let bind_addr: IpAddr = settings.bind_ip.parse()?;
 
-    tokio::spawn(srv_shrooming(SocketAddr::new(bind_addr, SHROOMING_PORT)));
+    tokio::spawn(srv_shrooming(SocketAddr::new(
+        bind_addr,
+        settings.shrooming_port,
+    )));
 
     let servers = [ServerInfo::new(
         server_addr,
-        BASE_PORT,
-        SERVER_NAME.to_string(),
-        CHANNELS,
+        settings.base_port,
+        settings.server_name,
+        settings.num_channels,
     )];
 
     // Create login server
-    let handshake_gen = BasicHandshakeGenerator::v95();
+    let handshake_gen = match settings.client_version {
+        83 => BasicHandshakeGenerator::v83(),
+        _ => BasicHandshakeGenerator::v95(),
+    };
 
     let meta = Box::new(MetaService::load_from_dir("../../game_data/rbin".into())?);
 
-    let services = Services::seeded_in_memory(servers, Box::leak(meta)).await?.as_shared();
+    let services = Services::seeded_in_memory(servers, Box::leak(meta))
+        .await?
+        .as_shared();
     let (acc_id, char_id) = services.seed_acc_char().await?;
     log::info!("Created test account {acc_id} - char: {char_id}");
 
     let mut set = JoinSet::new();
     set.spawn(srv_login_server(
-        SocketAddr::new(bind_addr, BASE_PORT),
+        SocketAddr::new(bind_addr, settings.base_port),
         handshake_gen.clone(),
         services.clone(),
     ));
-    for ch in 0..CHANNELS {
+    for ch in 0..settings.num_channels {
         set.spawn(srv_game_server(
-            SocketAddr::new(bind_addr, BASE_PORT + 1 + ch as u16),
+            SocketAddr::new(bind_addr, settings.base_port + 1 + ch as u16),
             handshake_gen.clone(),
             services.clone(),
             0,
