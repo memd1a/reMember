@@ -32,6 +32,7 @@ use moople_net::{
 
 use moople_packet::EncodePacket;
 
+use moople_packet::proto::CondOption;
 use moople_packet::proto::list::{MapleIndexListZ, MapleIndexList8};
 use moople_packet::proto::time::MapleExpiration;
 use moople_packet::{
@@ -48,13 +49,13 @@ use data::services::helper::pool::Drop;
 use proto95::game::mob::{MobMoveCtrlAckResp, MobMoveReq};
 use proto95::game::user::{
     ChangeSkillRecordResp, UpdatedSkillRecord, UserDropMoneyReq, UserDropPickUpReq,
-    UserMeleeAttackReq, UserSkillUpReq,
+    UserMeleeAttackReq, UserSkillUpReq, UserStatChangeReq, UserHitReq,
 };
 
 use proto95::id::{FaceId, HairId, ItemId, Skin};
 use proto95::shared::char::{SkillInfo, TeleportRockInfo, AvatarData, AvatarEquips, PetIds};
 use proto95::shared::movement::Movement;
-use proto95::shared::{FootholdId, Vec2};
+use proto95::shared::{FootholdId, Vec2, PongReq};
 use proto95::{
     game::{
         chat::{ChatMsgReq, UserChatMsgResp},
@@ -245,7 +246,10 @@ impl MapleSessionHandler for GameHandler {
             UserDropMoneyReq => GameHandler::handle_drop_money,
             MobMoveReq => GameHandler::handle_mob_move,
             UserMeleeAttackReq => GameHandler::handle_melee_attack,
-            UserSkillUpReq => GameHandler::handle_skill_up
+            UserSkillUpReq => GameHandler::handle_skill_up,
+            PongReq => GameHandler::handle_pong,
+            UserHitReq => GameHandler::handle_user_hit,
+            UserStatChangeReq => GameHandler::handle_stat_change,
         );
 
         handler(self, session, packet.into_reader()).await?;
@@ -284,6 +288,82 @@ impl MapleServerSessionHandler for GameHandler {
 }
 
 impl GameHandler {
+    async fn handle_user_hit(&mut self, req: UserHitReq) -> GameResult<CharStatChangedResp> {
+        let curr_stats = &self.session.char;
+
+        let (mut curr_hp, under) = curr_stats
+            .hp
+            .overflowing_sub_unsigned(req.dmg_internal.into());
+        if under || curr_hp < 0 {
+            curr_hp = 0;
+        }
+
+        let stats = CharStatPartial {
+            hp: CondOption(Some(curr_hp.try_into().unwrap())),
+            ..Default::default()
+        };
+
+        self.session.char.hp = curr_hp;
+
+        _ = self
+            .services
+            .data
+            .char
+            .save_char(self.session.char.clone().into());
+
+        Ok(CharStatChangedResp {
+            excl: false,
+            stats: stats.into(),
+            secondary_stat: false,
+            battle_recovery: false,
+        }
+        .into())
+    }
+
+    async fn handle_pong(&mut self, _req: PongReq) -> anyhow::Result<()> {
+        Ok(())
+    }
+
+    async fn handle_stat_change(
+        &mut self,
+        req: UserStatChangeReq,
+    ) -> GameResult<CharStatChangedResp> {
+        let curr_stats = &self.session.char;
+
+        // ensure hp/mp do not exceed char max
+        let (mut curr_hp, over) = curr_stats.hp.overflowing_add_unsigned(req.hp.into());
+        if over || curr_hp > curr_stats.max_hp {
+            curr_hp = curr_stats.max_hp;
+        }
+        let (mut curr_mp, over) = curr_stats.mp.overflowing_add_unsigned(req.mp.into());
+        if over || curr_mp > curr_stats.max_mp {
+            curr_mp = curr_stats.max_mp;
+        }
+
+        let stats = CharStatPartial {
+            hp: CondOption(Some(curr_hp.try_into().unwrap())),
+            mp: CondOption(Some(curr_mp.try_into().unwrap())),
+            ..Default::default()
+        };
+
+        self.session.char.hp = curr_hp;
+        self.session.char.mp = curr_mp;
+
+        _ = self
+            .services
+            .data
+            .char
+            .save_char(self.session.char.clone().into());
+
+        Ok(CharStatChangedResp {
+            excl: false,
+            stats: stats.into(),
+            secondary_stat: false,
+            battle_recovery: false,
+        }
+        .into())
+    }
+
     async fn handle_skill_up(&mut self, req: UserSkillUpReq) -> GameResult<ChangeSkillRecordResp> {
         Ok(ChangeSkillRecordResp {
             reset_excl: true,
