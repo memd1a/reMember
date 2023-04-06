@@ -4,7 +4,11 @@ use proto95::id::SkillId;
 
 use crate::{
     entities::{self, skill},
-    services::{data::{DataServices, character::CharacterID}, helper::intentory::inv::InventorySet},
+    services::{
+        character::Character,
+        data::{character::CharacterID, DataServices},
+        helper::intentory::inv::InventorySet,
+    },
 };
 
 use super::session_manager::{OwnedSession, SessionBackend};
@@ -12,7 +16,7 @@ use super::session_manager::{OwnedSession, SessionBackend};
 #[derive(Debug, Clone)]
 pub struct MoopleSessionData {
     pub acc: entities::account::Model,
-    pub char: entities::character::Model,
+    pub char: Character,
     pub inv: InventorySet,
     pub skills: BTreeMap<SkillId, skill::Model>,
 }
@@ -32,7 +36,7 @@ impl SessionBackend for MoopleSessionBackend {
     async fn load(&self, param: Self::SessionLoadParam) -> anyhow::Result<Self::SessionData> {
         let (acc, char_id) = param;
         //TODO: important verify that char belongs to the account
-        let char = self.data.char.must_get(char_id).await?;
+        let char = Character::from(self.data.char.must_get(char_id).await?);
         let inv = self.data.item.load_inventory_for_character(char_id).await?;
 
         let skills = self
@@ -51,7 +55,7 @@ impl SessionBackend for MoopleSessionBackend {
         })
     }
     async fn save(&self, session: Self::SessionData) -> anyhow::Result<()> {
-        let char_id = session.char.id;
+        let char_id = session.char.model.id;
         self.data.item.save_inventory(session.inv, char_id).await?;
 
         Ok(())
