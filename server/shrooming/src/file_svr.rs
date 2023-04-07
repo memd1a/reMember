@@ -22,14 +22,14 @@ impl FileSvr {
     }
 
     async fn serve_ix(State(ix): State<Arc<Self>>) -> impl IntoResponse {
-        Json(ix.index.get_index())
+        Json(ix.index.get_index().expect("File index"))
     }
 
     async fn serve_file(
         State(ix): State<Arc<Self>>,
         Path(name): Path<String>,
     ) -> impl IntoResponse {
-        let Some(file) = ix.index.get(&name) else  {
+        let Some(file) = ix.index.get_path(&name) else  {
             return Err(Response::builder()
                 .status(StatusCode::NOT_FOUND)
                 .body(body::boxed(Empty::new()))
@@ -37,16 +37,16 @@ impl FileSvr {
         };
 
         //TODO handle the path error here
-        let file = tokio::fs::File::open(&file.path).await.unwrap();
+        let file = tokio::fs::File::open(&file).await.unwrap();
         let file_len = file.metadata().await.unwrap().len();
         let stream = ReaderStream::new(file);
         let body = StreamBody::new(stream);
 
-        return Ok(Response::builder()
+        Ok(Response::builder()
             .header(header::CONTENT_TYPE, "application/octet-stream")
             .header(header::CONTENT_LENGTH, file_len)
             .body(body)
-            .unwrap());
+            .unwrap())
     }
 
     pub async fn serve(self, addr: SocketAddr) -> anyhow::Result<()> {

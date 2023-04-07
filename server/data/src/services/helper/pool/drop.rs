@@ -1,5 +1,6 @@
 use std::{ops::Add, time::Duration};
 
+use geo::coord;
 use moople_packet::proto::time::MapleExpiration;
 use proto95::{
     game::{
@@ -14,7 +15,9 @@ use proto95::{
     shared::Vec2,
 };
 
-use crate::services::{data::character::CharacterID, session::session_set::SessionSet};
+use crate::services::{
+    data::character::CharacterID, meta::fh_tree::Foothold, session::MoopleSessionSet,
+};
 
 use super::{next_id, Pool, PoolItem};
 
@@ -66,8 +69,8 @@ impl PoolItem for Drop {
         };
 
         let start_pos = (
-            self.start_pos.add((0, -100).into()),
-            Duration::from_millis(1000).into(),
+            self.start_pos.add((0, -20).into()),
+            Duration::from_millis(100).into(),
         );
 
         DropEnterFieldResp {
@@ -105,12 +108,13 @@ impl PoolItem for Drop {
 }
 
 impl Pool<Drop> {
-    pub async fn add_mob_drops(
+    pub fn add_mob_drops(
         &self,
         killed_mob: MobId,
         pos: Vec2,
+        fh: Option<&Foothold>,
         killer: CharacterID,
-        sessions: &SessionSet,
+        sessions: &MoopleSessionSet,
     ) -> anyhow::Result<()> {
         let Some(drops) = self.meta.get_drops_for_mob(killed_mob)  else {
             return Ok(())
@@ -118,32 +122,45 @@ impl Pool<Drop> {
 
         let money = drops.get_money_drop(&mut rand::thread_rng());
         let items = drops.get_item_drops(&mut rand::thread_rng());
+
+        let n = items.len() + usize::from(money > 0);
+        // Get spread for items + mesos, TODO mesos are optional, fix items being zero
+        let mut spread = fh.map(|fh| fh.get_item_spread(pos.x as f32, n));
+
+        fn map_coord(c: geo::Coord<f32>) -> geo::Coord<i16> {
+            coord! {x: c.x as i16, y: c.y as i16}
+        }
+
         if money > 0 {
             self.add(
                 Drop {
                     owner: DropOwner::User(killer as u32),
-                    pos,
+                    pos: spread
+                        .as_mut()
+                        .and_then(|fh| fh.next().map(map_coord))
+                        .unwrap_or(pos),
                     start_pos: pos,
                     value: DropTypeValue::Mesos(money),
                     quantity: 1,
                 },
                 sessions,
-            )
-            .await?;
+            )?;
         }
 
         for (item, quantity) in items {
             self.add(
                 Drop {
                     owner: DropOwner::User(killer as u32),
-                    pos,
+                    pos: spread
+                        .as_mut()
+                        .and_then(|fh| fh.next().map(map_coord))
+                        .unwrap_or(pos),
                     start_pos: pos,
                     value: DropTypeValue::Item(item),
                     quantity,
                 },
                 sessions,
-            )
-            .await?;
+            )?;
         }
 
         Ok(())

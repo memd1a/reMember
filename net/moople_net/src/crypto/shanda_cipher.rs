@@ -114,7 +114,7 @@ mod tests {
     // Simple bruteforce with all possible values for `b` and `state`
     // The len parameter can shift at most by 7 places and is then wrapped in EVEN rounds
     // In odd round It's simply wrapped_add/sub so not really worth It to bruteforce here further
-    //Not supposed to run on CI, testing it locally is enough since this test is essentially a bruteforce
+    // Not supposed to run on CI, testing it locally is enough since this test is essentially a bruteforce
     #[ignore]
     #[test]
     fn odd_even_enc_dec() {

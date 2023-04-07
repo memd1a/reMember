@@ -1,7 +1,7 @@
 use moople_derive::MooplePacket;
 use moople_packet::{
-    maple_packet_enum, packet_opcode, proto::{option::MapleOption8, string::FixedPacketString}, DecodePacket, EncodePacket,
-    PacketLen,
+    maple_packet_enum, packet_opcode,
+    proto::{option::MapleOption8, string::FixedPacketString},
 };
 
 use crate::{
@@ -20,58 +20,22 @@ pub struct FriendRecord {
     pub friend_group: FixedPacketString<0x11>,
 }
 
-#[derive(Debug)]
+#[derive(MooplePacket, Debug)]
 pub struct FriendList {
+    pub len: u8,
+    #[pkt(size = "len")]
     pub friends: Vec<FriendRecord>,
+    #[pkt(size = "len")]
     pub in_shop: Vec<u32>, // 4 bit boolean
 }
 
 impl FriendList {
     pub fn empty() -> Self {
         Self {
+            len: 0,
             friends: Vec::new(),
             in_shop: Vec::new(),
         }
-    }
-}
-
-//TODO solve this via derive or atleast auto-impl Encode + PacketLen
-impl<'de> DecodePacket<'de> for FriendList {
-    fn decode_packet(
-        pr: &mut moople_packet::MaplePacketReader<'de>,
-    ) -> moople_packet::NetResult<Self> {
-        let n = pr.read_u8()? as usize;
-
-        Ok(Self {
-            friends: FriendRecord::decode_packet_n(pr, n)?,
-            in_shop: u32::decode_packet_n(pr, n)?,
-        })
-    }
-}
-
-impl EncodePacket for FriendList {
-    fn encode_packet<T: bytes::BufMut>(
-        &self,
-        pw: &mut moople_packet::MaplePacketWriter<T>,
-    ) -> moople_packet::NetResult<()> {
-        let n = self.friends.len();
-        assert_eq!(self.in_shop.len(), n);
-
-        pw.write_u8(n as u8);
-        self.friends.encode_packet(pw)?;
-        self.in_shop.encode_packet(pw)?;
-
-        Ok(())
-    }
-}
-
-impl PacketLen for FriendList {
-    const SIZE_HINT: Option<usize> = None;
-
-    fn packet_len(&self) -> usize {
-        1 // size
-        + self.friends.packet_len()
-        + self.in_shop.packet_len()
     }
 }
 

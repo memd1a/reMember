@@ -4,7 +4,7 @@ use either::Either;
 
 use crate::{MaplePacketReader, MaplePacketWriter, NetResult};
 
-use super::{DecodePacket, EncodePacket, PacketLen};
+use super::{DecodePacket, EncodePacket};
 
 impl<'de> DecodePacket<'de> for () {
     fn decode_packet(_pr: &mut MaplePacketReader<'de>) -> NetResult<Self> {
@@ -16,9 +16,7 @@ impl EncodePacket for () {
     fn encode_packet<B: BufMut>(&self, _pw: &mut MaplePacketWriter<B>) -> NetResult<()> {
         Ok(())
     }
-}
 
-impl PacketLen for () {
     const SIZE_HINT: Option<usize> = Some(0);
 
     fn packet_len(&self) -> usize {
@@ -37,13 +35,7 @@ where
             Either::Right(b) => b.encode_packet(pw),
         }
     }
-}
 
-impl<A, B> PacketLen for Either<A, B>
-where
-    A: PacketLen,
-    B: PacketLen,
-{
     const SIZE_HINT: Option<usize> = None;
 
     fn packet_len(&self) -> usize {
@@ -66,6 +58,12 @@ where
         }
         Ok(())
     }
+
+    const SIZE_HINT: Option<usize> = None;
+
+    fn packet_len(&self) -> usize {
+        self.0.as_ref().map(|v| v.packet_len()).unwrap_or(0)
+    }
 }
 
 impl<'de, T> DecodePacket<'de> for OptionTail<T>
@@ -75,26 +73,6 @@ where
     fn decode_packet(pr: &mut MaplePacketReader<'de>) -> NetResult<Self> {
         let mut sub_reader = pr.sub_reader();
         Ok(Self(T::decode_packet(&mut sub_reader).ok()))
-    }
-}
-impl EncodePacket for String {
-    fn encode_packet<B: BufMut>(&self, pw: &mut MaplePacketWriter<B>) -> NetResult<()> {
-        pw.write_str(self);
-        Ok(())
-    }
-}
-
-impl<'de> DecodePacket<'de> for String {
-    fn decode_packet(pr: &mut MaplePacketReader<'de>) -> NetResult<Self> {
-        Ok(pr.read_string()?.to_string())
-    }
-}
-
-impl PacketLen for String {
-    const SIZE_HINT: Option<usize> = None;
-
-    fn packet_len(&self) -> usize {
-        self.as_str().packet_len()
     }
 }
 
@@ -118,13 +96,7 @@ macro_rules! impl_enc {
                 $enc(pw, *self);
                 Ok(())
             }
-        }
-    };
-}
 
-macro_rules! impl_len {
-    ($ty:ty) => {
-        impl PacketLen for $ty {
             const SIZE_HINT: Option<usize> = Some(std::mem::size_of::<$ty>());
 
             fn packet_len(&self) -> usize {
@@ -157,7 +129,6 @@ macro_rules! impl_dec_enc {
     ($ty:ty, $dec:path, $enc:path) => {
         impl_dec!($ty, $dec);
         impl_enc!($ty, $enc);
-        impl_len!($ty);
         impl_tracing!($ty);
     };
 }
@@ -220,8 +191,6 @@ impl_dec_enc!(
     MaplePacketWriter::write_f64
 );
 
-
-
 impl<'de, const N: usize, T: DecodePacket<'de>> DecodePacket<'de> for [T; N] {
     fn decode_packet(pr: &mut MaplePacketReader<'de>) -> NetResult<Self> {
         try_array_init(|_| T::decode_packet(pr))
@@ -235,20 +204,18 @@ impl<const N: usize, T: EncodePacket> EncodePacket for [T; N] {
         }
         Ok(())
     }
+
+    const SIZE_HINT: Option<usize> = mul(T::SIZE_HINT, N);
+
+    fn packet_len(&self) -> usize {
+        self.iter().map(|v| v.packet_len()).sum()
+    }
 }
 
 const fn mul(sz: Option<usize>, n: usize) -> Option<usize> {
     match sz {
         Some(sz) => Some(sz * n),
         _ => None,
-    }
-}
-
-impl<const N: usize, T: PacketLen> PacketLen for [T; N] {
-    const SIZE_HINT: Option<usize> = mul(T::SIZE_HINT, N);
-
-    fn packet_len(&self) -> usize {
-        self.iter().map(|v| v.packet_len()).sum()
     }
 }
 
@@ -260,9 +227,7 @@ impl<D: EncodePacket> EncodePacket for Vec<D> {
 
         Ok(())
     }
-}
 
-impl<D: PacketLen> PacketLen for Vec<D> {
     const SIZE_HINT: Option<usize> = None;
 
     fn packet_len(&self) -> usize {
@@ -278,12 +243,33 @@ impl<D: EncodePacket> EncodePacket for Option<D> {
 
         Ok(())
     }
-}
 
-impl<D: PacketLen> PacketLen for Option<D> {
     const SIZE_HINT: Option<usize> = None;
 
     fn packet_len(&self) -> usize {
         self.as_ref().map(|v| v.packet_len()).unwrap_or(0)
+    }
+}
+
+
+#[cfg(test)]
+mod tests {
+    use crate::proto::tests::enc_dec_test_all;
+
+    #[test]
+    fn test_name() {
+        macro_rules! test_num {
+            ($ty:ty) => {
+                let min = <$ty>::MIN;
+                let max = <$ty>::MAX;
+                let half = (min + max) / (2 as $ty);
+                enc_dec_test_all([min, max, half])
+            };
+            ($($ty:ty,)*) => {
+                $(test_num!($ty);)*
+            };
+        }
+
+        test_num!(u8,i8,u16,i16,u32,i32,u64,i64,u128,i128,f32,f64,);
     }
 }

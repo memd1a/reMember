@@ -2,9 +2,9 @@ use std::net::IpAddr;
 
 use data::services::{
     field::FieldJoinHandle,
-    session::{session_data::OwnedMoopleSession, session_set::SharedSessionDataRef, ClientKey},
+    session::{session_data::OwnedMoopleSession, ClientKey},
 };
-use moople_net::service::packet_buffer::PacketBuffer;
+use moople_net::service::{packet_buffer::PacketBuffer, session_svc::SharedSessionHandle};
 use proto95::{
     login::world::{ChannelId, WorldId},
     shared::{char::CharStatPartial, FootholdId, Vec2},
@@ -18,7 +18,7 @@ pub mod char;
 
 pub struct SessionState {
     pub session: OwnedMoopleSession,
-    pub session_handle: SharedSessionDataRef,
+    pub session_handle: SharedSessionHandle,
     pub peer_addr: IpAddr,
     pub world_id: WorldId,
     pub channel_id: ChannelId,
@@ -40,6 +40,4 @@ pub struct GameState {
     pub char_update: PartialCharStats,
 }
 
-impl GameState {
-    
-}
+impl GameState {}

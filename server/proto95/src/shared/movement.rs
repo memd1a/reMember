@@ -1,11 +1,11 @@
 use moople_derive::{MoopleEncodePacket, MooplePacket};
 use moople_packet::{
-    maple_enum_code, maple_packet_enum,
+    maple_packet_enum,
     proto::{time::MapleDurationMs16, DecodePacket, MapleList8},
     NetResult,
 };
 
-use super::{Rect, Vec2};
+use super::{Rect, Vec2, FootholdId};
 
 #[derive(Debug, MoopleEncodePacket)]
 pub struct KeyPadState(u8, Vec<u8>);
@@ -28,7 +28,7 @@ pub struct MovePassiveInfo {
     pub bounds: Rect,
 }
 
-/* 
+/*
 maple_enum_code!(
     MovementState,
     u8,
@@ -49,70 +49,131 @@ maple_enum_code!(
 );*/
 pub type MovementAction = u8;
 
-/// Every movement contains this
-#[derive(Debug, MooplePacket)]
-pub struct MovementInfo {
-    pub pos: Vec2,
-    pub velocity: Vec2,
-}
-
 #[derive(Debug, MooplePacket)]
 pub struct MovementFooter {
     pub action: MovementAction,
     pub dur: MapleDurationMs16,
 }
 
-type FootholdId = u16;
 
 #[derive(Debug, MooplePacket)]
 pub struct AbsoluteMovement {
-    pub p: Vec2,
+    pub pos: Vec2,
     pub velocity: Vec2,
-    pub foothold: FootholdId,
+    pub fh: FootholdId,
     pub offset: Vec2,
-    pub footer: MovementFooter
+    pub footer: MovementFooter,
 }
 
+impl AbsoluteMovement {
+    pub fn get_pos_fh(&self) -> Option<(Vec2, Option<FootholdId>)> {
+        Some((self.pos, Some(self.fh)))
+    }
+
+    pub fn get_footer(&self) -> &MovementFooter {
+        &self.footer
+    }
+}
 #[derive(Debug, MooplePacket)]
 pub struct AbsoluteFallMovement {
-    pub p: Vec2,
+    pub pos: Vec2,
     pub velocity: Vec2,
     pub fh: FootholdId,
     pub fh_fall_start: FootholdId,
     pub offset: Vec2,
-    pub footer: MovementFooter
+    pub footer: MovementFooter,
+}
+
+impl AbsoluteFallMovement {
+    pub fn get_pos_fh(&self) -> Option<(Vec2, Option<FootholdId>)> {
+        Some((self.pos, Some(self.fh)))
+    }
+
+    pub fn get_footer(&self) -> &MovementFooter {
+        &self.footer
+    }
 }
 
 #[derive(Debug, MooplePacket)]
 pub struct RelativeMovement {
     pub velocity: Vec2,
-    pub footer: MovementFooter
+    pub footer: MovementFooter,
+}
+
+impl RelativeMovement {
+    pub fn get_pos_fh(&self) -> Option<(Vec2, Option<FootholdId>)> {
+        None
+    }
+
+    pub fn get_footer(&self) -> &MovementFooter {
+        &self.footer
+    }
 }
 
 #[derive(Debug, MooplePacket)]
 pub struct InstantMovement {
-    pub p: Vec2,
+    pub pos: Vec2,
     pub fh: FootholdId,
-    pub footer: MovementFooter
+    pub footer: MovementFooter,
+}
+
+impl InstantMovement {
+    pub fn get_pos_fh(&self) -> Option<(Vec2, Option<FootholdId>)> {
+        Some((self.pos, Some(self.fh)))
+    }
+
+    pub fn get_footer(&self) -> &MovementFooter {
+        &self.footer
+    }
 }
 
 #[derive(Debug, MooplePacket)]
 pub struct FallDownMovement {
     pub velocity: Vec2,
     pub fh_fall_start: FootholdId,
-    pub footer: MovementFooter
+    pub footer: MovementFooter,
+}
+
+impl FallDownMovement {
+    pub fn get_pos_fh(&self) -> Option<(Vec2, Option<FootholdId>)> {
+        None
+    }
+
+    pub fn get_footer(&self) -> &MovementFooter {
+        &self.footer
+    }
 }
 
 #[derive(Debug, MooplePacket)]
 pub struct FlyingMovement {
-    pub p: Vec2,
+    pub pos: Vec2,
     pub velocity: Vec2,
-    pub footer: MovementFooter
+    pub footer: MovementFooter,
+}
+
+impl FlyingMovement {
+    pub fn get_pos_fh(&self) -> Option<(Vec2, Option<FootholdId>)> {
+        Some((self.pos, None))
+    }
+
+    pub fn get_footer(&self) -> &MovementFooter {
+        &self.footer
+    }
 }
 
 #[derive(Debug, MooplePacket)]
 pub struct UnknownMovement {
-    pub footer: MovementFooter
+    pub footer: MovementFooter,
+}
+
+impl UnknownMovement {
+    pub fn get_pos_fh(&self) -> Option<(Vec2, Option<FootholdId>)> {
+        None
+    }
+
+    pub fn get_footer(&self) -> &MovementFooter {
+        &self.footer
+    }
 }
 
 maple_packet_enum!(
@@ -157,11 +218,102 @@ maple_packet_enum!(
    MobAttackRushStop(AbsoluteMovement) => 0x24,
 );
 
+impl Movement {
+    pub fn get_pos_fh(&self) -> Option<(Vec2, Option<FootholdId>)> {
+        match self {
+            Movement::Normal(mv) => mv.get_pos_fh(),
+            Movement::MobAttackRush(mv) => mv.get_pos_fh(),
+            Movement::MobAttackRushStop(mv) => mv.get_pos_fh(),
+            Movement::Jump(mv) => mv.get_pos_fh(),
+            Movement::Impact(mv) => mv.get_pos_fh(),
+            Movement::Immediate(mv) => mv.get_pos_fh(),
+            Movement::Teleport(mv) => mv.get_pos_fh(),
+            Movement::HangOnBack(mv) => mv.get_pos_fh(),
+            Movement::Assaulter(mv) => mv.get_pos_fh(),
+            Movement::Assassinate(mv) => mv.get_pos_fh(),
+            Movement::Rush(mv) => mv.get_pos_fh(),
+            Movement::StatChange(_mv) => None,
+            Movement::SitDown(mv) => mv.get_pos_fh(),
+            Movement::StartFallDown(mv) => mv.get_pos_fh(),
+            Movement::FallDown(mv) => mv.get_pos_fh(),
+            Movement::StartWings(mv) => mv.get_pos_fh(),
+            Movement::Wings(mv) => mv.get_pos_fh(),
+            Movement::MobToss(mv) => mv.get_pos_fh(),
+            Movement::FlyingBlock(mv) => mv.get_pos_fh(),
+            Movement::DashSlide(mv) => mv.get_pos_fh(),
+            Movement::FlashJump(mv) => mv.get_pos_fh(),
+            Movement::RocketBooster(mv) => mv.get_pos_fh(),
+            Movement::BackstepShot(mv) => mv.get_pos_fh(),
+            Movement::MobPowerKnockback(mv) => mv.get_pos_fh(),
+            Movement::VerticalJump(mv) => mv.get_pos_fh(),
+            Movement::CustomImpact(mv) => mv.get_pos_fh(),
+            Movement::CombatStep(mv) => mv.get_pos_fh(),
+            Movement::Hit(mv) => mv.get_pos_fh(),
+            Movement::TimeBombAttack(mv) => mv.get_pos_fh(),
+            Movement::SnowballTouch(mv) => mv.get_pos_fh(),
+            Movement::BuffZoneEffect(mv) => mv.get_pos_fh(),
+            Movement::MobLadder(mv) => mv.get_pos_fh(),
+            Movement::MobRightAngle(mv) => mv.get_pos_fh(),
+            Movement::MobStopNodeStart(mv) => mv.get_pos_fh(),
+            Movement::MobBeforeNode(mv) => mv.get_pos_fh(),
+        }
+    }
+
+    pub fn get_footer(&self) -> Option<&MovementFooter> {
+        match self {
+            Movement::Normal(mv) => Some(mv.get_footer()),
+            Movement::MobAttackRush(mv) => Some(mv.get_footer()),
+            Movement::MobAttackRushStop(mv) => Some(mv.get_footer()),
+            Movement::Jump(mv) => Some(mv.get_footer()),
+            Movement::Impact(mv) => Some(mv.get_footer()),
+            Movement::Immediate(mv) => Some(mv.get_footer()),
+            Movement::Teleport(mv) => Some(mv.get_footer()),
+            Movement::HangOnBack(mv) => Some(mv.get_footer()),
+            Movement::Assaulter(mv) => Some(mv.get_footer()),
+            Movement::Assassinate(mv) => Some(mv.get_footer()),
+            Movement::Rush(mv) => Some(mv.get_footer()),
+            Movement::StatChange(_) => None,
+            Movement::SitDown(mv) => Some(mv.get_footer()),
+            Movement::StartFallDown(mv) => Some(mv.get_footer()),
+            Movement::FallDown(mv) => Some(mv.get_footer()),
+            Movement::StartWings(mv) => Some(mv.get_footer()),
+            Movement::Wings(mv) => Some(mv.get_footer()),
+            Movement::MobToss(mv) => Some(mv.get_footer()),
+            Movement::FlyingBlock(mv) => Some(mv.get_footer()),
+            Movement::DashSlide(mv) => Some(mv.get_footer()),
+            Movement::FlashJump(mv) => Some(mv.get_footer()),
+            Movement::RocketBooster(mv) => Some(mv.get_footer()),
+            Movement::BackstepShot(mv) => Some(mv.get_footer()),
+            Movement::MobPowerKnockback(mv) =>  Some(mv.get_footer()),
+            Movement::VerticalJump(mv) => Some(mv.get_footer()),
+            Movement::CustomImpact(mv) => Some(mv.get_footer()),
+            Movement::CombatStep(mv) => Some(mv.get_footer()),
+            Movement::Hit(mv) => Some(mv.get_footer()),
+            Movement::TimeBombAttack(mv) => Some(mv.get_footer()),
+            Movement::SnowballTouch(mv) => Some(mv.get_footer()),
+            Movement::BuffZoneEffect(mv) => Some(mv.get_footer()),
+            Movement::MobLadder(mv) => Some(mv.get_footer()),
+            Movement::MobRightAngle(mv) => Some(mv.get_footer()),
+            Movement::MobStopNodeStart(mv) => Some(mv.get_footer()),
+            Movement::MobBeforeNode(mv) => Some(mv.get_footer()),
+        }
+    }
+}
+
 #[derive(MooplePacket, Debug)]
 pub struct MovePath {
     pub pos: Vec2,
     pub velocity: Vec2,
     pub moves: MapleList8<Movement>,
+}
+
+impl MovePath {
+    pub fn get_last_pos_fh(&self) -> Option<(Vec2, Option<FootholdId>)> {
+        self.moves
+            .iter()
+            .rev()
+            .find_map(|p| p.get_pos_fh())
+    }
 }
 
 #[derive(MooplePacket, Debug)]

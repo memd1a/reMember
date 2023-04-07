@@ -1,9 +1,13 @@
 use bytes::BufMut;
 use moople_derive::MooplePacket;
 use moople_packet::{
-    maple_packet_enum,
-    proto::{time::{MapleTime, MapleExpiration}, DecodePacket, EncodePacket, PacketLen, option::MapleOption8, CondOption},
-    NetResult, mark_maple_bit_flags,
+    maple_packet_enum, mark_maple_bit_flags,
+    proto::{
+        option::MapleOption8,
+        time::{MapleExpiration, MapleTime},
+        CondOption, DecodePacket, EncodePacket,
+    },
+    NetResult,
 };
 
 use crate::id::ItemId;
@@ -26,7 +30,6 @@ bitflags::bitflags! {
 }
 mark_maple_bit_flags!(ItemFlags);
 
-
 bitflags::bitflags! {
     #[derive(Copy, Clone, Debug, PartialEq, Eq)]
     pub struct ItemBundleFlags : u16 {
@@ -47,7 +50,7 @@ mark_maple_bit_flags!(ItemPetFlags);
 
 bitflags::bitflags! {
     #[derive(Copy, Clone, Debug, PartialEq, Eq)]
-    pub struct ItemEquipFlags : u16 {    
+    pub struct ItemEquipFlags : u16 {
         const Protected = 0x01;
         const PreventSlipping = 0x02;
         const SupportWarm = 0x04;
@@ -62,9 +65,9 @@ pub struct PetItemInfo {
     pub name: NameStr,
     pub level: u8,
     pub tameness: u16,
-    pub fullness: u8, /* repleteness */
+    pub fullness: u8,                /* repleteness */
     pub expiration: MapleExpiration, /* dateDead */
-    pub attribute1: u16, /* PetAttribute  seems to be only hasStats 2^0*/
+    pub attribute1: u16,             /* PetAttribute  seems to be only hasStats 2^0*/
     pub skill: u16,
     pub remain_life: u32,
     pub attribute2: u16, /* Attribute  Only IsPossibleTrading 2^0 */
@@ -131,7 +134,7 @@ pub struct ItemStackData {
     pub title: String,
     pub flag: ItemFlags,
     #[pkt(if(field = "info", cond = "ItemInfo::is_rechargable"))]
-    pub serial_number: CondOption<u64>/* liSN */
+    pub serial_number: CondOption<u64>, /* liSN */
 }
 
 #[derive(Debug)]
@@ -154,6 +157,15 @@ impl<'de> DecodePacket<'de> for OptionalLevelInfo {
 }
 
 impl EncodePacket for OptionalLevelInfo {
+    const SIZE_HINT: Option<usize> = None;
+
+    fn packet_len(&self) -> usize {
+        self.0
+            .as_ref()
+            .map(|info| info.packet_len() + 1)
+            .unwrap_or(10)
+    }
+
     fn encode_packet<B: BufMut>(
         &self,
         pw: &mut moople_packet::MaplePacketWriter<B>,
@@ -167,17 +179,6 @@ impl EncodePacket for OptionalLevelInfo {
         };
 
         Ok(())
-    }
-}
-
-impl PacketLen for OptionalLevelInfo {
-    const SIZE_HINT: Option<usize> = None;
-
-    fn packet_len(&self) -> usize {
-        self.0
-            .as_ref()
-            .map(|info| info.packet_len() + 1)
-            .unwrap_or(10)
     }
 }
 
@@ -207,15 +208,11 @@ pub struct EquipItemInfo {
     pub sn: u64,
 
     /*
-      if ((*(uint *)&this->field_0x18 | *(uint *)&this->field_0x1c) == 0) {
-    COutPacket::EncodeBuffer(param_1,&this->liSN,8);
-  } */
-
-
-  pub time_stamp: MapleTime, // ftEquipped
-  pub prev_bonus_exp_rate: i32, // nPrevBonusExpRate ?
-
-
+        if ((*(uint *)&this->field_0x18 | *(uint *)&this->field_0x1c) == 0) {
+      COutPacket::EncodeBuffer(param_1,&this->liSN,8);
+    } */
+    pub time_stamp: MapleTime,    // ftEquipped
+    pub prev_bonus_exp_rate: i32, // nPrevBonusExpRate ?
 }
 
 maple_packet_enum!(
@@ -226,5 +223,3 @@ maple_packet_enum!(
     Pet(ItemPetData) => 3,
     Equipped(()) => 255
 );
-
-

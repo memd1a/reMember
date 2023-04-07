@@ -1,6 +1,3 @@
-
-
-
 #[macro_export]
 macro_rules! maple_constant {
     ($name:ident, $ty:ty, $val:expr) => {

@@ -3,7 +3,9 @@ name = "re_wz"
 version = "0.1.0"
 edition = "2021"
 
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+[features]
+default = []
+mmap = ["memmap2"]
 
 [dependencies]
 aes = "0.8.2"
@@ -15,5 +17,6 @@ deflate = "1.0.0"
 id_tree = "1.8.0"
 image = "0.24.5"
 itoa = "1.0.5"
-memmap2 = "0.5.10"
 flate2 = { version = "1.0.17", features = ["zlib"], default-features = false }
+memmap2 = { version = "0.5.10", optional = true }
+log = "0.4.17"

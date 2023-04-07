@@ -77,45 +77,37 @@ impl GameHandler {
                 None
             }
             ReplCmd::Mesos { amount } => {
-                self.field
-                    .add_drop(Drop {
-                        owner: proto95::game::drop::DropOwner::None,
-                        pos: self.pos,
-                        start_pos: self.pos,
-                        value: DropTypeValue::Mesos(amount),
-                        quantity: 1,
-                    })
-                    .await?;
+                self.field.add_drop(Drop {
+                    owner: proto95::game::drop::DropOwner::None,
+                    pos: self.pos,
+                    start_pos: self.pos,
+                    value: DropTypeValue::Mesos(amount),
+                    quantity: 1,
+                })?;
                 None
             }
             ReplCmd::Item { id } => {
                 let item = id.map_or(ItemId::ADVANCED_MONSTER_CRYSTAL_1, ItemId);
-                self.field
-                    .add_drop(Drop {
-                        owner: proto95::game::drop::DropOwner::None,
-                        pos: self.pos,
-                        start_pos: self.pos,
-                        value: DropTypeValue::Item(item),
-                        quantity: 1,
-                    })
-                    .await?;
+                self.field.add_drop(Drop {
+                    owner: proto95::game::drop::DropOwner::None,
+                    pos: self.pos,
+                    start_pos: self.pos,
+                    value: DropTypeValue::Item(item),
+                    quantity: 1,
+                })?;
                 None
             }
             ReplCmd::FakeUser { id } => {
-                self.field
-                    .add_user(User {
-                        avatar_data: self.avatar_data.clone(),
-                        char_id: id,
-                        pos: self.pos,
-                        fh: self.fh,
-                    })
-                    .await?;
+                self.field.add_user(User {
+                    avatar_data: self.avatar_data.clone(),
+                    char_id: id,
+                    pos: self.pos,
+                    fh: self.fh,
+                })?;
                 None
             }
             ReplCmd::Aggro => {
-                self.field
-                    .assign_mob_controller(self.sess_handle.clone())
-                    .await?;
+                self.field.assign_mob_controller(self.sess_handle.clone())?;
                 None
             }
             ReplCmd::Dispose => {

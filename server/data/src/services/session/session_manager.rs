@@ -2,7 +2,7 @@ use dashmap::DashMap;
 use std::{
     hash::Hash,
     sync::Arc,
-    time::{Duration, Instant},
+    time::{Duration, Instant}, ops::{Deref, DerefMut},
 };
 use tokio::sync::Mutex;
 
@@ -15,7 +15,27 @@ pub trait SessionBackend {
     async fn save(&self, session: Self::SessionData) -> anyhow::Result<()>;
 }
 
-pub type OwnedSession<SessionData> = tokio::sync::OwnedMutexGuard<SessionData>;
+
+#[derive(Debug)]
+pub struct OwnedSession<Key, SessionData> {
+    pub session: tokio::sync::OwnedMutexGuard<SessionData>,
+    pub key: Key
+}
+
+impl<Key, SessionData> Deref for OwnedSession<Key, SessionData> {
+    type Target = SessionData;
+
+    fn deref(&self) -> &Self::Target {
+        self.session.deref()
+    }
+}
+
+impl<Key, SessionData> DerefMut for OwnedSession<Key, SessionData> {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        self.session.deref_mut()
+    }
+}
+
 pub type SessionMutex<SessionData> = Arc<Mutex<SessionData>>;
 
 #[derive(Debug)]
@@ -27,7 +47,7 @@ pub struct SessionManager<Key: Eq + Hash, Backend: SessionBackend> {
 
 impl<Key, Backend> SessionManager<Key, Backend>
 where
-    Key: Eq + Hash + std::fmt::Debug,
+    Key: Eq + Hash + Clone + std::fmt::Debug,
     Backend: SessionBackend + Send + 'static,
 {
     pub fn new(backend: Backend) -> Self {
@@ -66,7 +86,8 @@ where
         Ok(())
     }
 
-    pub async fn close_session(&self, key: Key, session: OwnedSession<Backend::SessionData>) -> anyhow::Result<()> {
+    pub async fn close_session(&self, session: OwnedSession<Key, Backend::SessionData>) -> anyhow::Result<()> {
+        let key = session.key.clone();
         //self.backend.save(session).await?;
         
         // Release lock
@@ -94,7 +115,7 @@ where
         &self,
         key: Key,
         param: Backend::SessionLoadParam
-    ) -> anyhow::Result<OwnedSession<Backend::SessionData>>
+    ) -> anyhow::Result<OwnedSession<Key, Backend::SessionData>>
     where
         Key: Clone,
     {
@@ -102,7 +123,7 @@ where
         self.try_claim_session(&key)
     }
 
-    pub fn try_claim_session(&self, key: &Key) -> anyhow::Result<OwnedSession<Backend::SessionData>> {
+    pub fn try_claim_session(&self, key: &Key) -> anyhow::Result<OwnedSession<Key, Backend::SessionData>> {
         let data = self
             .sessions
             .get(key)
@@ -110,14 +131,17 @@ where
             .value()
             .clone();
 
-        Ok(data.try_lock_owned()?)
+        Ok(OwnedSession {
+            session: data.try_lock_owned()?,
+            key: key.clone()
+        })
     }
 
     pub async fn try_claim_session_timeout(
         &self,
         key: &Key,
         timeout: Duration,
-    ) -> anyhow::Result<OwnedSession<Backend::SessionData>> {
+    ) -> anyhow::Result<OwnedSession<Key, Backend::SessionData>> {
         let data = self
             .sessions
             .get(key)
@@ -128,11 +152,14 @@ where
         let now = Instant::now();
         while now.elapsed() < timeout {
             if let Ok(session) = data.clone().try_lock_owned() {
-                return Ok(session);
+                return Ok(OwnedSession {
+                    session,
+                    key: key.clone()
+                });
             }
             tokio::time::sleep(Duration::from_millis(10)).await;
         }
 
-        Ok(data.try_lock_owned()?)
+        anyhow::bail!("Timeout")
     }
 }

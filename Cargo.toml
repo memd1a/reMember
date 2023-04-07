@@ -21,5 +21,8 @@ members = [
     "server/mono",
     "server/data",
     "server/data/migration",
+
+    # util
+    "util/packet_tracer"
 ]
-exclude = ["client/moople_hook"]
+exclude = ["client/moople_hook","client/moople_ffi"]

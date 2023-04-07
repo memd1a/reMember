@@ -137,7 +137,7 @@ mod tests {
     use super::MaplePacketWriter;
 
     #[test]
-    fn handshake_encode() {
+    fn write() {
         let mut pw = MaplePacketWriter::with_capacity(64);
         pw.write_u8(0);
         pw.write_bytes(&[1, 2, 3, 4]);

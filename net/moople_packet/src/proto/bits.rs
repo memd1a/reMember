@@ -1,6 +1,6 @@
+use super::wrapped::PacketWrapped;
 use bitflags::BitFlags;
 use packed_struct::PackedStruct;
-use super::wrapped::PacketWrapped;
 
 pub struct MapleBitFlags<T: BitFlags>(pub T);
 
@@ -8,13 +8,16 @@ impl<T: BitFlags> MapleBitFlags<T> {
     pub fn new(inner: T) -> Self {
         Self(inner)
     }
-    
+
     pub fn cloned(inner: &T) -> Self {
         Self(T::from_bits(inner.bits()).unwrap())
     }
 }
 
-impl<T> PacketWrapped for MapleBitFlags<T>  where T: BitFlags {
+impl<T> PacketWrapped for MapleBitFlags<T>
+where
+    T: BitFlags,
+{
     type Inner = T::Bits;
 
     fn packet_into_inner(&self) -> Self::Inner {
@@ -35,26 +38,28 @@ macro_rules! mark_maple_bit_flags {
             fn packet_into_inner(&self) -> Self::Inner {
                 Self::Inner::cloned(self)
             }
-    
+
             fn packet_from(v: Self::Inner) -> Self {
                 v.0
             }
         }
-    }
+    };
 }
-
 
 pub struct MaplePacked<T: PackedStruct>(pub T);
 
-impl<T> PacketWrapped for MaplePacked<T>  where T: PackedStruct + Clone {
+impl<T> PacketWrapped for MaplePacked<T>
+where
+    T: PackedStruct + Clone,
+{
     type Inner = T::ByteArray;
 
     fn packet_into_inner(&self) -> Self::Inner {
-        self.0.pack().unwrap()
+        self.0.pack().expect("pack")
     }
 
     fn packet_from(v: Self::Inner) -> Self {
-        Self(T::unpack(&v).unwrap())
+        Self(T::unpack(&v).expect("unpack"))
     }
 }
 
@@ -69,14 +74,12 @@ macro_rules! maple_mark_packed {
                 // Maybe this should be a Transparent type instead of a wrapped
                 // with different into and from type
                 // in this case: into -> &T, from <- T
-                $crate::proto::bits::MaplePacked(
-                    self.clone()
-                )
+                $crate::proto::bits::MaplePacked(self.clone())
             }
-    
+
             fn packet_from(v: Self::Inner) -> Self {
                 v.0
             }
         }
-    }
+    };
 }

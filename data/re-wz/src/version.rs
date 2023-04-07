@@ -9,6 +9,12 @@ impl From<u16> for WzVersion {
     }
 }
 
+impl From<usize> for WzVersion {
+    fn from(value: usize) -> Self {
+        Self(value as u16)
+    }
+}
+
 fn version_hash(v: u16) -> u32 {
     let mut buffer = itoa::Buffer::new();
     buffer.format(v).as_bytes().iter().fold(0, |mut acc, &c| {

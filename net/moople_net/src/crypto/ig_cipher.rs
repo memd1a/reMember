@@ -17,31 +17,26 @@ fn update_key(key: u32, b: u8) -> u32 {
 }
 
 fn enc(data: u8, key: [u8; 4]) -> u8 {
-    // TODO this is incomplete
-    // need to look into the AND 0x55 mask
-    // to see how to get b
-    /*
-        notes:
-            * b MUST be even(b = 2a)
-            * 0x55 mask = 0101 0101
-    
-     */
-    let b = data.rotate_right(4);
-    let a = b / 2;
+    let v = data.rotate_right(4);
+    // v(even bits) = (a << 1) & 0xAA(even bits)
+    let even = (v & 0xAA) >> 1;
+    // v(odd bits) = (a >> 1) & 0x55(odd bits) 
+    let odd = (v & 0x55) << 1;
+
+    let a = even | odd;
     a ^ shuffle(key[0])
 }
 
 fn dec(data: u8, key: [u8; 4]) -> u8 {
     let a = shuffle(key[0]) ^ data;
-    let b = a.wrapping_add(a);
+    let b = a << 1;
 
     let mut v = a;
     v >>= 1;
     v ^= b;
     v &= 0x55;
     v ^= b;
-    v = v.rotate_left(4);
-    v
+    v.rotate_left(4)
 }
 
 pub fn inno_hash_n<const N: usize>(data: &[u8; N], mut key: u32) -> u32 {
@@ -89,5 +84,8 @@ mod tests {
 
         let d = enc(v, key);
         assert_eq!(d, 0x31);
+
+        let v = dec(0xff, key);
+        assert_eq!(enc(v, key), 0xff);
     }
 }

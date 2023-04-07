@@ -13,6 +13,8 @@ use rand::Rng;
 
 use crate::services::model::item::{EquipStat, EquipStats};
 
+use super::fh_tree::FhTree;
+
 #[derive(Debug)]
 pub struct DropEntry {
     pub item: ItemId,
@@ -66,8 +68,15 @@ pub fn get_equip_stats(meta: ItemMeta) -> EquipStats {
 }
 
 #[derive(Debug)]
+pub struct FieldMetaData {
+    pub map: map::Map,
+    pub fh_tree: FhTree,
+}
+
+#[derive(Debug)]
 pub struct MetaData {
     pub maps0: BTreeMap<i64, map::Map>,
+    pub maps0_fh: BTreeMap<i64, FhTree>,
     pub mobs: BTreeMap<u32, wz2::Mob>,
     pub items: BTreeMap<u32, wz2::Item>,
     pub equips: BTreeMap<u32, wz2::Item>,
@@ -85,8 +94,13 @@ impl MetaData {
     }
 
     pub fn load_from_dir(dir: PathBuf) -> anyhow::Result<Self> {
+        let maps0: BTreeMap<i64, map::Map> = Self::load_from_file(dir.join("maps0.rbin"))?;
         Ok(Self {
-            maps0: Self::load_from_file(dir.join("maps0.rbin"))?,
+            maps0_fh: maps0
+                .iter()
+                .map(|(id, map)| (*id, FhTree::from_meta(map)))
+                .collect(),
+            maps0,
             mobs: wz2::load_all(dir.join("wz/Mob"))?,
             items: wz2::load_all(dir.join("wz/Item"))?,
             equips: wz2::load_all(dir.join("wz/Equip"))?,
@@ -124,27 +138,33 @@ impl MetaService {
         }
     }
 
-    pub fn load_from_dir(dir: PathBuf) -> anyhow::Result<Self> {
-        Ok(Self::new(MetaData::load_from_dir(dir)?))
+    pub fn load_from_dir(dir: impl AsRef<Path>) -> anyhow::Result<Self> {
+        Ok(Self::new(MetaData::load_from_dir(
+            dir.as_ref().to_path_buf(),
+        )?))
     }
 
-    pub fn get_field_data(&'static self, field_id: MapId) -> Option<FieldMeta> {
+    pub fn get_field_data(&self, field_id: MapId) -> Option<&map::Map> {
         self.meta_data.maps0.get(&(field_id.0 as i64))
     }
 
-    pub fn get_mob_data(&'static self, mob_id: MobId) -> Option<MobMeta> {
+    pub fn get_field_fh_data(&self, field_id: MapId) -> Option<&FhTree> {
+        self.meta_data.maps0_fh.get(&(field_id.0 as i64))
+    }
+
+    pub fn get_mob_data(&self, mob_id: MobId) -> Option<&wz2::Mob> {
         self.meta_data.mobs.get(&mob_id)
     }
 
-    pub fn get_item_data(&'static self, id: ItemId) -> Option<ItemMeta> {
+    pub fn get_item_data(&self, id: ItemId) -> Option<&wz2::Item> {
         self.meta_data.items.get(&id.0)
     }
 
-    pub fn get_eq_data(&'static self, id: ItemId) -> Option<ItemMeta> {
+    pub fn get_eq_data(&self, id: ItemId) -> Option<&wz2::Item> {
         self.meta_data.equips.get(&id.0)
     }
 
-    pub fn get_drops_for_mob(&'static self, _id: MobId) -> Option<DropsMeta> {
+    pub fn get_drops_for_mob(&self, _id: MobId) -> Option<&DropPool> {
         Some(&self.hard_coded_drop_pool)
     }
 }

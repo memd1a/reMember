@@ -115,7 +115,7 @@ impl From<equip_item::Model> for EquipItem {
                 item_id: ItemId(value.item_id as u32),
                 cash_id: value.cash_id.map(|i| i as u64),
                 expiration: value.expires_at,
-                owner: owner,
+                owner,
                 flags: proto_item::ItemFlags::from_bits(value.flags as u16).unwrap(),
                 last_update: 0,
             },

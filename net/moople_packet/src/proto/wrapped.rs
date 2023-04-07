@@ -2,7 +2,7 @@ use bytes::BufMut;
 
 use crate::{MaplePacketReader, MaplePacketWriter, NetResult};
 
-use super::{DecodePacket, EncodePacket, PacketLen};
+use super::{DecodePacket, EncodePacket};
 
 pub trait PacketWrapped: Sized {
     type Inner;
@@ -23,6 +23,12 @@ where
 {
     fn encode_packet<B: BufMut>(&self, pw: &mut MaplePacketWriter<B>) -> NetResult<()> {
         self.packet_into_inner().encode_packet(pw)
+    }
+
+    const SIZE_HINT: Option<usize> = W::Inner::SIZE_HINT;
+
+    fn packet_len(&self) -> usize {
+        Self::SIZE_HINT.unwrap_or(self.packet_into_inner().packet_len())
     }
 }
 
@@ -46,16 +52,5 @@ impl<W: PacketWrapped> PacketTryWrapped for W {
 
     fn packet_try_from(v: Self::Inner) -> NetResult<Self> {
         Ok(<W as PacketWrapped>::packet_from(v))
-    }
-}
-
-impl<W: PacketTryWrapped> PacketLen for W
-where
-    W::Inner: PacketLen,
-{
-    const SIZE_HINT: Option<usize> = W::Inner::SIZE_HINT;
-
-    fn packet_len(&self) -> usize {
-        Self::SIZE_HINT.unwrap_or(self.packet_into_inner().packet_len())
     }
 }

@@ -1,10 +1,12 @@
 use async_trait::async_trait;
 use moople_packet::{
     opcode::{HasOpcode, NetOpcode},
-    EncodePacket, NetError, NetResult,
+    EncodePacket, NetResult,
 };
 
 use crate::{MapleSession, SessionTransport};
+
+use super::handler::SessionHandleResult;
 
 //TODO get rid of async_trait for performance reasons here
 
@@ -13,7 +15,7 @@ pub trait Response {
     async fn send<Trans: SessionTransport + Send + Unpin>(
         self,
         session: &mut MapleSession<Trans>,
-    ) -> NetResult<()>;
+    ) -> NetResult<SessionHandleResult>;
 }
 
 #[async_trait]
@@ -21,8 +23,8 @@ impl Response for () {
     async fn send<Trans: SessionTransport + Send + Unpin>(
         self,
         _session: &mut MapleSession<Trans>,
-    ) -> NetResult<()> {
-        Ok(())
+    ) -> NetResult<SessionHandleResult> {
+        Ok(SessionHandleResult::Ok)
     }
 }
 
@@ -31,10 +33,10 @@ impl<Resp: Response + Send> Response for Option<Resp> {
     async fn send<Trans: SessionTransport + Send + Unpin>(
         self,
         session: &mut MapleSession<Trans>,
-    ) -> NetResult<()> {
+    ) -> NetResult<SessionHandleResult> {
         match self {
             Some(resp) => resp.send(session).await,
-            None => Ok(()),
+            None => Ok(SessionHandleResult::Ok),
         }
     }
 }
@@ -44,11 +46,11 @@ impl<Resp: Response + Send> Response for Vec<Resp> {
     async fn send<Trans: SessionTransport + Send + Unpin>(
         self,
         session: &mut MapleSession<Trans>,
-    ) -> NetResult<()> {
+    ) -> NetResult<SessionHandleResult> {
         for resp in self.into_iter() {
             resp.send(session).await?;
         }
-        Ok(())
+        Ok(SessionHandleResult::Ok)
     }
 }
 
@@ -72,13 +74,13 @@ where
     async fn send<Trans: SessionTransport + Send + Unpin>(
         self,
         session: &mut MapleSession<Trans>,
-    ) -> NetResult<()> {
+    ) -> NetResult<SessionHandleResult> {
         session.send_packet_with_opcode(self.op, self.data).await?;
-        Ok(())
+        Ok(SessionHandleResult::Ok)
     }
 }
 
-pub trait PacketOpcodeExt: Sized + EncodePacket {
+pub trait PacketOpcodeExt: EncodePacket {
     fn into_response<Op: NetOpcode>(self, opcode: Op) -> ResponsePacket<Op, Self> {
         ResponsePacket::new(opcode, self)
     }
@@ -98,6 +100,8 @@ impl<T: EncodePacket + HasOpcode> From<T> for ResponsePacket<T::OP, T> {
     }
 }
 
+/// Response which sends the packet `T` and then
+/// migrates the session
 pub struct MigrateResponse<T>(pub T);
 
 #[async_trait]
@@ -108,10 +112,22 @@ where
     async fn send<Trans: SessionTransport + Send + Unpin>(
         self,
         session: &mut MapleSession<Trans>,
-    ) -> NetResult<()> {
-        // Send migration packet and signal via an error the session is about to migrate
+    ) -> NetResult<SessionHandleResult> {
         self.0.send(session).await?;
-        return Err(NetError::Migrated);
+        return Ok(SessionHandleResult::Migrate);
+    }
+}
+
+pub struct PongResponse;
+
+#[async_trait]
+impl Response for PongResponse
+{
+    async fn send<Trans: SessionTransport + Send + Unpin>(
+        self,
+        _session: &mut MapleSession<Trans>,
+    ) -> NetResult<SessionHandleResult> {
+        return Ok(SessionHandleResult::Pong);
     }
 }
 

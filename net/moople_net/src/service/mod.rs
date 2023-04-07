@@ -1,3 +1,4 @@
+pub mod session_set;
 pub mod framed_pipe;
 pub mod packet_buffer;
 
@@ -6,7 +7,6 @@ use arrayvec::ArrayString;
 use crate::{codec::handshake::Handshake, crypto::RoundKey};
 
 pub mod handler;
-pub mod ping_pong;
 pub mod resp;
 pub mod session_svc;
 
@@ -44,7 +44,7 @@ impl HandshakeGenerator for BasicHandshakeGenerator {
         let mut rng = rand::thread_rng();
         Handshake {
             version: self.version,
-            subversion: self.sub_version.clone(),
+            subversion: self.sub_version,
             iv_enc: RoundKey::get_random(&mut rng),
             iv_dec: RoundKey::get_random(&mut rng),
             locale: self.locale,

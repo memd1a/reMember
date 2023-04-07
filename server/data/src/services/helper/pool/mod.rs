@@ -9,15 +9,14 @@ pub use drop::Drop;
 pub use mob::Mob;
 use moople_net::service::packet_buffer::PacketBuffer;
 pub use npc::Npc;
-use tokio::sync::RwLock;
 
-use std::{collections::BTreeMap, sync::atomic::AtomicU32};
+use std::{collections::BTreeMap, sync::{atomic::AtomicU32, RwLock}};
 
 use moople_packet::{EncodePacket, HasOpcode};
 use proto95::game::ObjectId;
 use std::fmt::Debug;
 
-use crate::services::{meta::meta_service::MetaService, session::session_set::SessionSet};
+use crate::services::{meta::meta_service::MetaService, session::MoopleSessionSet};
 
 pub fn next_id() -> ObjectId {
     static ID: AtomicU32 = AtomicU32::new(0);
@@ -68,17 +67,17 @@ where
         pool
     }
 
-    pub async fn update(&self, id: ObjectId, update: impl Fn(&mut T)) {
-        let mut items = self.items.write().await;
+    pub fn update(&self, id: ObjectId, update: impl Fn(&mut T)) {
+        let mut items = self.items.write().expect("Pool update");
         if let Some(item) = items.get_mut(&id) {
             update(item);
         }
     }
 
-    pub async fn add(&self, item: T, sessions: &SessionSet) -> anyhow::Result<u32> {
+    pub fn add(&self, item: T, sessions: &MoopleSessionSet) -> anyhow::Result<u32> {
         let id = T::get_id(&item);
         let pkt = item.get_enter_pkt(id);
-        self.items.write().await.insert(id, item);
+        self.items.write().expect("Pool insert").insert(id, item);
 
         sessions.broadcast_pkt(pkt, -1)?;
         Ok(id)
@@ -88,7 +87,7 @@ where
         &self,
         id: T::Id,
         param: T::LeaveParam,
-        sessions: &SessionSet,
+        sessions: &MoopleSessionSet,
     ) -> anyhow::Result<T> {
         //TODO migrate to actors
         let Some(item) = self.items.try_write().unwrap().remove(&id) else {
@@ -100,8 +99,8 @@ where
         Ok(item)
     }
 
-    pub async fn on_enter(&self, packet_buf: &mut PacketBuffer) -> anyhow::Result<()> {
-        for (id, pkt) in self.items.read().await.iter() {
+    pub fn on_enter(&self, packet_buf: &mut PacketBuffer) -> anyhow::Result<()> {
+        for (id, pkt) in self.items.read().expect("Pool on enter").iter() {
             packet_buf.write_packet(pkt.get_enter_pkt(*id))?;
         }
 

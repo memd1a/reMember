@@ -35,6 +35,7 @@ struct MaplePacketField {
     #[darling(rename="if")]
     _if: Option<Cond>,
     either: Option<Cond>,
+    size: Option<Ident>
 }
 
 impl MaplePacketField {
@@ -65,8 +66,19 @@ impl MaplePacketField {
         if let Some(cond) = self.get_cond() {
             let cond = cond.cond_expr();
             quote::quote!( let #var_ident  = <#ty as moople_packet::MapleConditional>::decode_packet_cond(#cond, pr) )
+        } else if let Some(sz) = self.size.as_ref() {
+            quote::quote!( let #var_ident = moople_packet::DecodePacketSized::decode_packet_sized(pr, #sz as usize) )
         } else {
             quote::quote!( let #var_ident = <#ty>::decode_packet(pr) )
+        }
+    }
+
+    pub fn size_hint_expr(&self) -> TokenStream {
+        let ty = &self.ty;
+        if self.get_cond().is_some() {
+            quote::quote!( None )
+        } else {
+            quote::quote!( <#ty>::SIZE_HINT )
         }
     }
 }
@@ -147,28 +159,7 @@ impl MaplePacket {
         })
     }
 
-    fn gen_encode(&self, token_stream: &mut proc_macro2::TokenStream) -> syn::Result<()> {
-        let struct_name = &self.ident;
-        let enc_generics = add_trait_bounds(
-            self.generics.clone(),
-            parse_quote!(moople_packet::EncodePacket),
-        );
 
-        let (impl_generics, ty_generics, where_clause) = enc_generics.split_for_impl();
-
-        let struct_enc_fields = self.fields_with_name().map(|((_, field_name), field)| {
-            let enc = field.encode_expr(&field_name);
-            quote::quote!( #enc?; )
-        });
-
-        token_stream.extend(quote::quote!(impl #impl_generics  moople_packet::EncodePacket for #struct_name #ty_generics #where_clause {
-            fn encode_packet<B: bytes::BufMut>(&self, pw: &mut moople_packet::MaplePacketWriter<B>) -> moople_packet::NetResult<()> {
-                #(#struct_enc_fields)*
-                Ok(())
-            }
-        }));
-        Ok(())
-    }
 
     fn gen_decode(&self, token_stream: &mut proc_macro2::TokenStream) -> syn::Result<()> {
         let struct_name = &self.ident;
@@ -202,17 +193,23 @@ impl MaplePacket {
         Ok(())
     }
 
-    fn gen_len(&self, token_stream: &mut proc_macro2::TokenStream) -> syn::Result<()> {
+    fn gen_encode(&self, token_stream: &mut proc_macro2::TokenStream) -> syn::Result<()> {
         let struct_name = &self.ident;
-        let len_generics = add_trait_bounds(
+        let enc_generics = add_trait_bounds(
             self.generics.clone(),
-            parse_quote!(moople_packet::PacketLen),
+            parse_quote!(moople_packet::EncodePacket),
         );
-        let (len_impl_generics, ty_generics, len_where_clause) = len_generics.split_for_impl();
+
+        let (impl_generics, ty_generics, where_clause) = enc_generics.split_for_impl();
+
+        let struct_enc_fields = self.fields_with_name().map(|((_, field_name), field)| {
+            let enc = field.encode_expr(&field_name);
+            quote::quote!( #enc?; )
+        });
 
         let struct_size_hint_fields = self.fields_with_name().map(|(_, field)| {
-            let ty = &field.ty;
-            quote::quote!(.add(moople_packet::proto::SizeHint(<#ty>::SIZE_HINT)))
+            let hint = field.size_hint_expr();
+            quote::quote!(.add(moople_packet::SizeHint(#hint)))
         });
 
         let struct_packet_len_fields = self.fields_with_name().map(|((_, field_name), field)| {
@@ -220,28 +217,29 @@ impl MaplePacket {
             quote::quote!( + #len )
         });
 
-        token_stream.extend(quote::quote! {
-            impl #len_impl_generics  moople_packet::PacketLen for #struct_name #ty_generics #len_where_clause  {
-                const SIZE_HINT: Option<usize> = moople_packet::proto::SizeHint::zero()#(#struct_size_hint_fields)*.0;
-
-                fn packet_len(&self) -> usize {
-                    0 #(#struct_packet_len_fields)*
-                }
+        token_stream.extend(quote::quote!(impl #impl_generics  moople_packet::EncodePacket for #struct_name #ty_generics #where_clause {
+            fn encode_packet<B: bytes::BufMut>(&self, pw: &mut moople_packet::MaplePacketWriter<B>) -> moople_packet::NetResult<()> {
+                #(#struct_enc_fields)*
+                Ok(())
             }
-        });
+
+            const SIZE_HINT: Option<usize> = moople_packet::SizeHint::zero()#(#struct_size_hint_fields)*.0;
+
+            fn packet_len(&self) -> usize {
+                0 #(#struct_packet_len_fields)*
+            }
+        }));
         Ok(())
     }
 
     fn gen(&self, tokens: &mut proc_macro2::TokenStream) {
         self.gen_encode(tokens)
             .and_then(|_| self.gen_decode(tokens))
-            .and_then(|_| self.gen_len(tokens))
             .unwrap();
     }
 
     fn gen_encode_len(&self, tokens: &mut proc_macro2::TokenStream) {
         self.gen_encode(tokens)
-            .and_then(|_| self.gen_len(tokens))
             .unwrap();
     }
 }
@@ -253,7 +251,6 @@ impl ToTokens for EncodePacket {
         self.0.gen_encode_len(tokens);
     }
 }
-
 
 impl ToTokens for MaplePacket {
     fn to_tokens(&self, tokens: &mut proc_macro2::TokenStream) {

@@ -1,16 +1,18 @@
 pub mod analyzer;
+pub mod error;
+pub mod opcode;
 pub mod proto;
 pub mod reader;
+pub mod util;
 pub mod writer;
-pub mod opcode;
-pub mod error;
 
 use bytes::{Bytes, BytesMut};
-pub use proto::{DecodePacket, DecodePacketOwned, EncodePacket, PacketLen};
-pub use proto::conditional::MapleConditional;
-pub use reader::MaplePacketReader;
-pub use writer::MaplePacketWriter;
 pub use opcode::HasOpcode;
+pub use proto::conditional::MapleConditional;
+pub use proto::{DecodePacket, DecodePacketOwned, DecodePacketSized, EncodePacket};
+pub use reader::MaplePacketReader;
+pub use util::SizeHint;
+pub use writer::MaplePacketWriter;
 
 pub use error::NetError;
 pub type NetResult<T> = Result<T, error::NetError>;
@@ -37,4 +39,3 @@ impl MaplePacket {
         self.into_reader().read_u16()
     }
 }
-

@@ -5,6 +5,7 @@ use hudhook::{
 use imgui::{Condition, ImColor32, WindowHoveredFlags};
 use windows::Win32::Foundation::HMODULE;
 
+
 pub fn init_module(hinst: HMODULE) {
     hudhook::lifecycle::global_state::set_module(HINSTANCE(hinst.0));
 }

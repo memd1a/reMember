@@ -7,34 +7,40 @@ use proto95::{
         chat::UserChatMsgResp,
         drop::DropId,
         mob::{MobLeaveType, MobMoveReq},
-        ObjectId, user::UserMoveReq,
+        user::UserMoveReq,
+        ObjectId,
     },
     id::MapId,
-    shared::{char::{CharacterId, AvatarData}, movement::Movement, FootholdId, Range2, Vec2},
+    shared::{char::AvatarData, FootholdId, Range2, Vec2},
 };
+use ractor::{Actor, ActorProcessingErr, ActorRef, RpcReplyPort};
 
 use super::{
     data::character::CharacterID,
     helper::pool::{drop::DropLeaveParam, reactor::Reactor, user::User, Drop, Mob, Npc, Pool},
-    meta::meta_service::{FieldMeta, MetaService},
-    session::session_set::{BroadcastRx, SessionSet},
+    meta::{
+        fh_tree::FhTree,
+        meta_service::{FieldMeta, MetaService},
+    },
+    session::MoopleSessionSet,
 };
 
 #[derive(Debug)]
 pub struct FieldData {
-    meta: &'static MetaService,
+    _meta: &'static MetaService,
     field_meta: FieldMeta,
+    field_fh: &'static FhTree,
     drop_pool: Pool<Drop>,
     mob_pool: Pool<Mob>,
     npc_pool: Pool<Npc>,
     reactor_pool: Pool<Reactor>,
     user_pool: Pool<User>,
-    sessions: SessionSet,
+    sessions: MoopleSessionSet,
 }
 
 pub struct FieldJoinHandle {
     field_data: Arc<FieldData>,
-    char_id: CharacterID
+    char_id: CharacterID,
 }
 
 impl Deref for FieldJoinHandle {
@@ -52,7 +58,11 @@ impl std::ops::Drop for FieldJoinHandle {
 }
 
 impl FieldData {
-    pub fn new(meta: &'static MetaService, field_meta: FieldMeta) -> Self {
+    pub fn new(
+        meta: &'static MetaService,
+        field_meta: FieldMeta,
+        fh_meta: &'static FhTree,
+    ) -> Self {
         let npcs = field_meta
             .life
             .values()
@@ -94,10 +104,11 @@ impl FieldData {
         });
 
         Self {
-            meta,
+            _meta: meta,
             field_meta,
+            field_fh: fh_meta,
             drop_pool: Pool::new(meta),
-            sessions: SessionSet::new(),
+            sessions: MoopleSessionSet::new(),
             mob_pool: Pool::from_elems(meta, mobs),
             npc_pool: Pool::from_elems(meta, npcs),
             reactor_pool: Pool::from_elems(meta, reactors),
@@ -108,28 +119,27 @@ impl FieldData {
     pub async fn enter_field(
         &self,
         char_id: CharacterID,
-        session: SharedSessionHandle,
+        mut session: SharedSessionHandle,
         avatar_data: AvatarData,
-        buf: &mut PacketBuffer,
     ) -> anyhow::Result<()> {
-        let rx = self.sessions.add(char_id, session);
-        self
-            .user_pool
-            .add(
-                User {
-                    char_id: char_id as u32,
-                    pos: Vec2::from((0, 0)),
-                    fh: 1,
-                    avatar_data,
-                },
-                &self.sessions,
-            )
-            .await?;
-        self.user_pool.on_enter(buf).await?;
-        self.drop_pool.on_enter(buf).await?;
-        self.npc_pool.on_enter(buf).await?;
-        self.mob_pool.on_enter(buf).await?;
-        self.reactor_pool.on_enter(buf).await?;
+        self.sessions.add(char_id, session.clone());
+        self.user_pool.add(
+            User {
+                char_id: char_id as u32,
+                pos: Vec2::from((0, 0)),
+                fh: 1,
+                avatar_data,
+            },
+            &self.sessions,
+        )?;
+        let mut buf = PacketBuffer::new();
+        self.user_pool.on_enter(&mut buf)?;
+        self.drop_pool.on_enter(&mut buf)?;
+        self.npc_pool.on_enter(&mut buf)?;
+        self.mob_pool.on_enter(&mut buf)?;
+        self.reactor_pool.on_enter(&mut buf)?;
+
+        session.try_send_buf(&buf)?;
 
         Ok(())
     }
@@ -139,21 +149,20 @@ impl FieldData {
         self.user_pool
             .remove(id as u32, (), &self.sessions)
             .expect("Must remove user");
-        //TODO: broadcast the message without async
     }
 
-    pub async fn add_user(&self, user: User) -> anyhow::Result<()> {
-        self.user_pool.add(user, &self.sessions).await?;
+    pub fn add_user(&self, user: User) -> anyhow::Result<()> {
+        self.user_pool.add(user, &self.sessions)?;
         Ok(())
     }
 
-    pub fn remove_user(&self, id: CharacterId) -> anyhow::Result<()> {
-        self.user_pool.remove(id, (), &self.sessions)?;
+    pub fn remove_user(&self, id: CharacterID) -> anyhow::Result<()> {
+        self.user_pool.remove(id as u32, (), &self.sessions)?;
         Ok(())
     }
 
-    pub async fn add_npc(&self, npc: Npc) -> anyhow::Result<()> {
-        self.npc_pool.add(npc, &self.sessions).await?;
+    pub fn add_npc(&self, npc: Npc) -> anyhow::Result<()> {
+        self.npc_pool.add(npc, &self.sessions)?;
         Ok(())
     }
 
@@ -163,7 +172,7 @@ impl FieldData {
     }
 
     pub async fn add_mob(&self, drop: Mob) -> anyhow::Result<()> {
-        self.mob_pool.add(drop, &self.sessions).await?;
+        self.mob_pool.add(drop, &self.sessions)?;
         Ok(())
     }
 
@@ -172,26 +181,15 @@ impl FieldData {
         Ok(())
     }
 
-    pub async fn update_user_pos(&self, movement: UserMoveReq, id: CharacterID) -> anyhow::Result<()> {
-        let last_movement = movement
-            .move_path
-            .moves
-            .items
-            .iter()
-            .filter_map(|movement| match movement {
-                Movement::Normal(mv) => Some(mv),
-                _ => None,
-            })
-            .last();
+    pub fn update_user_pos(&self, movement: UserMoveReq, id: CharacterID) -> anyhow::Result<()> {
+        let last_pos_fh = movement.move_path.get_last_pos_fh();
 
-        if let Some(mv) = last_movement {
+        if let Some((pos, fh)) = last_pos_fh {
             //TODO post mob state to msg state here
-            self.user_pool
-                .update(id as u32, |usr| {
-                    usr.pos = mv.p;
-                    usr.fh = mv.foothold;
-                })
-                .await;
+            self.user_pool.update(id as u32, |usr| {
+                usr.pos = pos;
+                usr.fh = fh.unwrap_or(usr.fh);
+            });
         }
 
         self.user_pool.user_move(id, movement, &self.sessions)?;
@@ -199,47 +197,40 @@ impl FieldData {
         Ok(())
     }
 
-    pub async fn update_mob_pos(&self, movement: MobMoveReq, controller: CharacterID) -> anyhow::Result<()> {
+    pub fn update_mob_pos(
+        &self,
+        movement: MobMoveReq,
+        controller: CharacterID,
+    ) -> anyhow::Result<()> {
         let id = movement.id;
-        let last_movement = movement
-            .move_path
-            .path
-            .moves
-            .items
-            .iter()
-            .filter_map(|movement| match movement {
-                Movement::Normal(mv) => Some(mv),
-                _ => None,
-            })
-            .last();
+        let last_pos_fh = movement.move_path.path.get_last_pos_fh();
 
-        if let Some(mv) = last_movement {
+        if let Some((pos, fh)) = last_pos_fh {
             //TODO post mob state to msg state here
-            self.mob_pool
-                .update(id, |mob| {
-                    mob.pos = mv.p;
-                    mob.fh = mv.foothold;
-                })
-                .await;
+            self.mob_pool.update(id, |mob| {
+                mob.pos = pos;
+                mob.fh = fh.unwrap_or(mob.fh);
+            });
         }
 
-        self.mob_pool.mob_move(movement.id, movement, controller as i32, &self.sessions)?;
+        self.mob_pool
+            .mob_move(movement.id, movement, controller, &self.sessions)?;
 
         Ok(())
     }
 
-    pub async fn add_drop(&self, drop: Drop) -> anyhow::Result<()> {
-        self.drop_pool.add(drop, &self.sessions).await?;
+    pub fn add_drop(&self, drop: Drop) -> anyhow::Result<()> {
+        self.drop_pool.add(drop, &self.sessions)?;
         Ok(())
     }
 
-    pub async fn remove_drop(&self, id: DropId, param: DropLeaveParam) -> anyhow::Result<()> {
+    pub fn remove_drop(&self, id: DropId, param: DropLeaveParam) -> anyhow::Result<()> {
         self.drop_pool.remove(id, param, &self.sessions)?;
         Ok(())
     }
 
-    pub async fn assign_mob_controller(&self, session: SharedSessionHandle) -> anyhow::Result<()> {
-        self.mob_pool.assign_controller(session).await?;
+    pub fn assign_mob_controller(&self, session: SharedSessionHandle) -> anyhow::Result<()> {
+        self.mob_pool.assign_controller(session)?;
         Ok(())
     }
 
@@ -253,17 +244,25 @@ impl FieldData {
         id: ObjectId,
         dmg: u32,
         attacker: CharacterID,
-        buf: &mut PacketBuffer,
+        session: &mut SharedSessionHandle,
     ) -> anyhow::Result<()> {
-        let killed = self.mob_pool.attack_mob(id, dmg, buf).await?;
+        let mut buf = PacketBuffer::new();
+        let killed = self
+            .mob_pool
+            .attack_mob(attacker, id, dmg, &mut buf, &self.sessions)?;
+        session.try_send_buf(&buf)?;
 
         if killed {
             let mob = self
                 .mob_pool
                 .remove(id, MobLeaveType::Etc(()), &self.sessions)?;
+
+            let fh = self
+                .field_fh
+                .get_foothold_below((mob.pos.x as f32, mob.pos.y as f32 - 20.).into());
+
             self.drop_pool
-                .add_mob_drops(mob.tmpl_id, mob.pos, attacker, &self.sessions)
-                .await?;
+                .add_mob_drops(mob.tmpl_id, mob.pos, fh, attacker, &self.sessions)?;
         }
 
         Ok(())
@@ -271,6 +270,44 @@ impl FieldData {
 
     pub fn get_meta(&self) -> FieldMeta {
         self.field_meta
+    }
+}
+
+pub enum FieldMessage {
+    UserEnter(User, RpcReplyPort<FieldJoinHandle>),
+    UserLeave(CharacterID),
+}
+
+pub struct FieldActor;
+
+#[async_trait::async_trait]
+impl Actor for FieldActor {
+    type Msg = FieldMessage;
+    type State = FieldData;
+    type Arguments = FieldData;
+
+    async fn pre_start(
+        &self,
+        _myself: ActorRef<Self>,
+        field_data: Self::Arguments,
+    ) -> Result<Self::State, ActorProcessingErr> {
+        Ok(field_data)
+    }
+
+    // This is our main message handler
+    async fn handle(
+        &self,
+        _myself: ActorRef<Self>,
+        message: Self::Msg,
+        state: &mut Self::State,
+    ) -> Result<(), ActorProcessingErr> {
+        match message {
+            FieldMessage::UserEnter(user, reply) => {
+                state.add_user(user);
+            }
+            FieldMessage::UserLeave(id) => state.remove_user(id)?,
+        }
+        Ok(())
     }
 }
 
@@ -294,7 +331,9 @@ impl FieldService {
             .get_field_data(field_id)
             .ok_or_else(|| anyhow::format_err!("Invalid field id: {field_id:?}"))?;
 
-        Ok(Arc::new(FieldData::new(self.meta, field_meta)))
+        let field_fh = self.meta.get_field_fh_data(field_id).unwrap();
+
+        Ok(Arc::new(FieldData::new(self.meta, field_meta, field_fh)))
     }
 
     pub fn get_field(&self, field_id: MapId) -> anyhow::Result<Arc<FieldData>> {
@@ -310,11 +349,10 @@ impl FieldService {
         char_id: CharacterID,
         avatar_data: AvatarData,
         session: SharedSessionHandle,
-        buf: &mut PacketBuffer,
         field_id: MapId,
     ) -> anyhow::Result<FieldJoinHandle> {
         let field = self.get_field(field_id)?;
-        let field_broadcast_rx = field.enter_field(char_id, session, avatar_data, buf).await?;
+        field.enter_field(char_id, session, avatar_data).await?;
 
         Ok(FieldJoinHandle {
             field_data: field.clone(),

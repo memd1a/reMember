@@ -1,4 +1,3 @@
-use futures::SinkExt;
 use moople_net::service::{packet_buffer::PacketBuffer, session_svc::SharedSessionHandle};
 use moople_packet::{EncodePacket, HasOpcode, MaplePacketWriter};
 use proto95::{
@@ -14,9 +13,7 @@ use proto95::{
 };
 
 use crate::services::{
-    data::character::CharacterID,
-    meta::meta_service::MobMeta,
-    session::session_set::{SessionSet, SharedSessionDataRef},
+    data::character::CharacterID, meta::meta_service::MobMeta, session::MoopleSessionSet,
 };
 
 use super::{next_id, Pool, PoolItem};
@@ -91,9 +88,9 @@ impl PoolItem for Mob {
 }
 
 impl Pool<Mob> {
-    pub async fn assign_controller(&self, mut session: SharedSessionHandle) -> anyhow::Result<()> {
+    pub fn assign_controller(&self, mut session: SharedSessionHandle) -> anyhow::Result<()> {
         //TODO move out loop
-        for (id, mob) in self.items.read().await.iter() {
+        for (id, mob) in self.items.read().expect("Mob assign controller").iter() {
             let empty_stats = PartialMobTemporaryStat {
                 hdr: (),
                 data: MobTemporaryStatPartial {
@@ -115,31 +112,35 @@ impl Pool<Mob> {
                 .into(),
             }
             .encode_packet(&mut pw)?;
-            session.tx.send(pw.into_packet().data).await?;
+
+            //TODO
+            session.tx.try_send(pw.into_packet().data).unwrap();
         }
         Ok(())
     }
 
-    pub async fn attack_mob(
+    pub fn attack_mob(
         &self,
+        attacker: CharacterID,
         id: ObjectId,
         dmg: u32,
         buf: &mut PacketBuffer,
+        sessions: &MoopleSessionSet
     ) -> anyhow::Result<bool> {
         // TODO: Locking the whole pool to update a single mob is not right
-        let mut mobs = self.items.write().await;
+        let mut mobs = self.items.write().expect("Mob attack");
         let mob = mobs
             .get_mut(&id)
             .ok_or(anyhow::format_err!("Invalid mob"))?;
         mob.damage(dmg);
 
-        buf.write_packet(MobDamagedResp {
+        sessions.broadcast_pkt(MobDamagedResp {
             id,
             ty: 0,
             dec_hp: dmg,
             hp: mob.hp,
             max_hp: mob.meta.max_hp,
-        })?;
+        }, attacker)?;
 
         buf.write_packet(MobHPIndicatorResp {
             id,
@@ -154,7 +155,7 @@ impl Pool<Mob> {
         id: ObjectId,
         req: MobMoveReq,
         controller: CharacterID,
-        sessions: &SessionSet,
+        sessions: &MoopleSessionSet,
     ) -> anyhow::Result<()> {
         let pkt = MobMoveResp {
             id,

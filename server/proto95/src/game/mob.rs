@@ -4,17 +4,15 @@ use moople_packet::{
     proto::{
         option::MapleOption8,
         time::{MapleDurationMs16, MapleDurationMs32},
-        CondOption, MapleList32, PacketWrapped,
-    },
+        CondOption, MapleList32, PacketWrapped, partial::PartialFlag,
+    }, partial_data,
 };
 
 use crate::{
     id::{ItemId, SkillId},
-    maple_stats,
     recv_opcodes::RecvOpcodes,
     send_opcodes::SendOpcodes,
     shared::{char::CharacterId, movement::{MovePassivePath, MovePath}, FootholdId, TagPoint, Vec2},
-    stats::PartialFlag,
 };
 
 use super::ObjectId;
@@ -38,7 +36,7 @@ pub struct BurnedInfo {
     pub dot_count: u32,
 }
 
-maple_stats!(
+partial_data!(
     MobTemporaryStat,
     MobTemporaryStatFlags,
     u128,

@@ -1,30 +1,33 @@
 use moople_derive::MooplePacket;
-use moople_packet::{proto::{
-    conditional::CondEither,
-    list::{MapleIndexList8, MapleIndexListZ16, MapleIndexListZ8},
-    option::MapleOption8,
-    time::{MapleTime, MapleDurationMs32, MapleExpiration, MapleDurationMs16},
-    MapleList16, MapleList32,
-}, packet_opcode};
+use moople_packet::{
+    packet_opcode, partial_data,
+    proto::{
+        conditional::CondEither,
+        list::{MapleIndexList8, MapleIndexListZ16, MapleIndexListZ8},
+        option::MapleOption8,
+        partial::PartialFlag,
+        time::{MapleDurationMs16, MapleDurationMs32, MapleExpiration, MapleTime},
+        MapleList16, MapleList32,
+    },
+};
 
 use crate::{
+    game::mob::MobId,
     id::{
         job_id::{JobId, SubJob},
         FaceId, HairId, ItemId, MapId, SkillId, Skin,
     },
-    maple_stats,
-    stats::PartialFlag, send_opcodes::SendOpcodes, game::mob::MobId,
+    send_opcodes::SendOpcodes,
 };
 
-use super::{job::Job, Gender, NameStr, item::Item};
+use super::{item::Item, job::Job, Gender, NameStr};
 
-
-const CHAR_PET_LEN: usize = 3;
+const CHAR_PET_COUNT: usize = 3;
 pub type CashID = u64;
-pub type PetIds = [ItemId; CHAR_PET_LEN];
+pub type PetIds = [ItemId; CHAR_PET_COUNT];
 //TODO:
-pub type Pets = [u64; CHAR_PET_LEN];
-pub type PetCashIds = [CashID; CHAR_PET_LEN];
+pub type Pets = [u64; CHAR_PET_COUNT];
+pub type PetCashIds = [CashID; CHAR_PET_COUNT];
 pub type Money = u32;
 pub type CharacterId = u32;
 
@@ -241,7 +244,6 @@ pub struct VisitorQuestLogInfo {
     unknown: u16,
 }
 
-
 #[derive(MooplePacket, Debug)]
 pub struct CharDataStat {
     pub stat: CharStat,
@@ -258,7 +260,7 @@ pub struct CharDataEquipped {
     pub mechanic_equipped: MapleIndexListZ16<Item>,
 }
 
-maple_stats!(
+partial_data!(
     CharForcedStat,
     CharForcedStatFlags,
     u32,
@@ -279,7 +281,7 @@ maple_stats!(
 
 #[derive(MooplePacket, Debug)]
 pub struct CharForcedStatSetResp {
-    pub stats: PartialFlag<(), CharForcedStatPartial> 
+    pub stats: PartialFlag<(), CharForcedStatPartial>,
 }
 packet_opcode!(CharForcedStatSetResp, SendOpcodes::ForcedStatSet);
 
@@ -287,7 +289,7 @@ packet_opcode!(CharForcedStatSetResp, SendOpcodes::ForcedStatSet);
 pub struct CharForcedStatResetResp;
 packet_opcode!(CharForcedStatResetResp, SendOpcodes::ForcedStatReset);
 
-maple_stats!(
+partial_data!(
     CharStat,
     CharStatFlags,
     u32,
@@ -314,7 +316,6 @@ maple_stats!(
 
 );
 
-
 #[derive(Debug, MooplePacket)]
 pub struct CharStatChangedResp {
     pub excl: bool,
@@ -325,17 +326,16 @@ pub struct CharStatChangedResp {
 }
 packet_opcode!(CharStatChangedResp, SendOpcodes::StatChanged);
 
-
 #[derive(MooplePacket, Debug)]
 pub struct CharTempStatSetResp {
     pub temp_stats: PartialFlag<(), CharSecondaryStatPartial>,
-    pub unknown: u16 // Delay?
+    pub unknown: u16, // Delay?
 }
 packet_opcode!(CharTempStatSetResp, SendOpcodes::TemporaryStatSet);
 
 #[derive(MooplePacket, Debug)]
 pub struct CharTempStatResetResp {
-    pub flags: CharSecondaryStatFlags
+    pub flags: CharSecondaryStatFlags,
 }
 packet_opcode!(CharTempStatResetResp, SendOpcodes::TemporaryStatReset);
 
@@ -347,7 +347,7 @@ pub struct CharDataHeader {
     pub extra_data: MapleOption8<UnknownCharExtraData>,
 }
 
-maple_stats!(
+partial_data!(
     CharData,
     CharDataFlags,
     u64,
@@ -388,10 +388,10 @@ maple_stats!(
 pub struct TempStatValue {
     pub n: u16,
     pub r: u32,
-    pub t: MapleDurationMs32
+    pub t: MapleDurationMs32,
 }
 
-maple_stats!(
+partial_data!(
     RemoteCharSecondaryStat,
     RemoteCharSecondaryStatFlags,
     u128,
@@ -477,14 +477,14 @@ maple_stats!(
 );
 
 pub struct RemoteCharSecondaryStatExtra {
-    pub defense_att: u8,//n
+    pub defense_att: u8, //n
     pub defense_state: u8,
     /*
-        TempStatBases, see SecondaryStat
-     */
+       TempStatBases, see SecondaryStat
+    */
 }
 
-maple_stats!(
+partial_data!(
     CharSecondaryStat,
     CharSecondaryStatFlags,
     u128,
@@ -524,7 +524,7 @@ maple_stats!(
     MesoUp(TempStatValue) =>  1 << 0x19,
     ShadowPartner(TempStatValue) =>  1 << 0x1A,
     PickPocket(TempStatValue) =>  1 << 0x1B,
-    MesoGuard(TempStatValue) =>  1 << 0x1C,        
+    MesoGuard(TempStatValue) =>  1 << 0x1C,
     Thaw(TempStatValue) =>  1 << 0x1D,
     Weakness(TempStatValue) =>  1 << 0x1E,
     Curse(TempStatValue) =>  1 << 0x1F,
@@ -540,7 +540,7 @@ maple_stats!(
     SpiritJavelin(TempStatValue) =>  1 << 0x28, // shadow claw
     Infinity(TempStatValue) =>  1 << 0x29, // Done
     Holyshield(TempStatValue) =>  1 << 0x2A, // Done
-    HamString(TempStatValue) =>  1 << 0x2B, // Done    
+    HamString(TempStatValue) =>  1 << 0x2B, // Done
     Blind(TempStatValue) =>  1 << 0x2C, // Done
     Concentration(TempStatValue) =>  1 << 0x2D, // Done
     BanMap(TempStatValue) =>  1 << 0x2E,
@@ -587,7 +587,7 @@ maple_stats!(
     FinalCut(TempStatValue) =>  1 << 0x58,
     ThornsEffect(TempStatValue) =>  1 << 0x59,
     SwallowAttackDamage(TempStatValue) =>  1 << 0x5A,
-    MorewildDamageUp(TempStatValue) =>  1 << 0x5B,        
+    MorewildDamageUp(TempStatValue) =>  1 << 0x5B,
     Mine(TempStatValue) =>  1 << 0x5C,
     Cyclone(TempStatValue) =>  1 << 0x65,
     SwallowCritical(TempStatValue) =>  1 << 0x67,
@@ -613,7 +613,6 @@ maple_stats!(
     //TODO: 0x81 overflow u128 SummonBomb(TempStatValue) =>  1 << 0x81,
 );
 
-
 #[derive(MooplePacket)]
 pub struct CharSecondaryStatExtra {
     // TODO option If any Swallow stat is set
@@ -622,8 +621,6 @@ pub struct CharSecondaryStatExtra {
     pub dice_info: [u32; 0x16],
     // TODO option if blessing armor is set
     pub blessing_armor_inc_pad: u32,
-
-
     /*
     TWO State values Decode/EncodeForClient(SecondaryStat::SecondaryStat)
             EnergyCharged = 0x7A, TwoState greater equal 10_000
@@ -636,7 +633,7 @@ pub struct CharSecondaryStatExtra {
      */
 }
 /*
-    Additional:
-        SwallowCritical = If any 
+   Additional:
+       SwallowCritical = If any
 
- */
+*/

@@ -36,6 +36,8 @@ pub struct Model {
     pub use_slots: i32,
     pub setup_slots: i32,
     pub etc_slots: i32,
+    pub cash_slots: i32,
+    pub storage_slots: i32,
     pub face: i32,
     pub skin: i32,
     pub hair: i32,

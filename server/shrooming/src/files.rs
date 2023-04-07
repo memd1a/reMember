@@ -1,7 +1,7 @@
 use std::{
     collections::BTreeMap,
-    fs::File,
-    path::{Path, PathBuf},
+    fs::{File, self},
+    path::{Path, PathBuf}, sync::{RwLock, RwLockReadGuard}, time::SystemTime
 };
 
 use anyhow::anyhow;
@@ -15,7 +15,7 @@ fn get_file_hash(f: &mut File) -> anyhow::Result<String> {
     std::io::copy(f, &mut hasher)?;
 
     let result = hasher.finalize();
-    Ok(hex::encode(&result))
+    Ok(hex::encode(result))
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -52,6 +52,7 @@ impl FileMeta {
 pub struct FileEntry {
     pub path: PathBuf,
     pub meta: FileMeta,
+    pub last_update: SystemTime
 }
 
 impl FileEntry {
@@ -59,20 +60,42 @@ impl FileEntry {
         let p = p.as_ref();
         let meta = FileMeta::from_path(p)?;
 
+        let fmeta = fs::metadata(p)?;
+
         Ok(Self {
             path: p.to_path_buf(),
             meta,
+            last_update: fmeta.modified()?
         })
+    }
+
+    pub fn  is_updated(&self) -> anyhow::Result<bool> {
+        let fmeta = fs::metadata(&self.path)?;
+        Ok(self.last_update < fmeta.modified()?)
+    }
+
+    pub fn update(&mut self) -> anyhow::Result<()> {
+        self.meta = FileMeta::from_path(&self.path)?;
+        Ok(())
     }
 }
 
 pub struct FileIndex {
-    files: BTreeMap<String, FileEntry>,
+    files: BTreeMap<String, RwLock<FileEntry>>,
 }
 
 impl FileIndex {
-    pub fn get_index(&self) -> Vec<FileMeta> {
-        self.files.values().map(|f| f.meta.clone()).collect()
+    pub fn get_index(&self) -> anyhow::Result<Vec<FileMeta>> {
+        let mut v = Vec::with_capacity(self.files.len());
+        for f in self.files.values() {
+            if f.read().unwrap().is_updated()? {
+                f.write().unwrap().update()?;
+            }
+
+            v.push(f.read().unwrap().meta.clone());
+        }
+
+        Ok(v)
     }
 
 
@@ -86,16 +109,22 @@ impl FileIndex {
             }
              
             let entry = FileEntry::from_path(file)?;
-            files.insert(entry.meta.name.to_lowercase(), entry);
+            files.insert(entry.meta.name.to_lowercase(), RwLock::new(entry));
         }
 
         Ok(Self { files })
     }
 
-    pub fn get(&self, name: &str) -> Option<&FileEntry> {
+    pub fn get_path(&self, name: &str) -> Option<PathBuf> {
         let key = name.to_lowercase();
-        self.files.get(&key)
+        self.files.get(&key).map(|f| f.read().unwrap().path.clone())
     }
+
+    pub fn get(&self, name: &str) -> Option<RwLockReadGuard<FileEntry>> {
+        let key = name.to_lowercase();
+        self.files.get(&key).map(|f| f.read().unwrap())
+    }
+
 
     pub fn get_updates<'a>(
         &'a self,

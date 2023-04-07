@@ -2,7 +2,7 @@ use sea_orm_migration::prelude::*;
 
 use crate::helper::moople_ty::char_stat;
 
-pub const CHAR_STATS: [&str; 26] = [
+pub const CHAR_STATS: [&str; 28] = [
     "level",
     "exp",
     "gacha_exp",
@@ -25,6 +25,8 @@ pub const CHAR_STATS: [&str; 26] = [
     "use_slots",
     "setup_slots",
     "etc_slots",
+    "cash_slots",
+    "storage_slots",
     "face",
     "skin",
     "hair",

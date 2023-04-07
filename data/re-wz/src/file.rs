@@ -1,12 +1,11 @@
 use std::{
     fs::File,
-    io::{self, BufRead, BufReader, Cursor, Read, Seek, SeekFrom},
-    path::Path, rc::Rc,
+    io::{self, BufRead, BufReader, Read, Seek, SeekFrom},
+    path::Path,
+    rc::Rc,
 };
 
 use binrw::BinRead;
-
-use memmap2::Mmap;
 
 use image::{Rgba, RgbaImage};
 
@@ -175,20 +174,6 @@ impl WzReaderFile {
     }
 }
 
-pub type WzReaderMmap = WzReader<Cursor<Mmap>>;
-
-impl WzReaderMmap {
-    pub fn open_file_mmap(
-        path: impl AsRef<Path>,
-        region: WzRegion,
-        version: WzVersion,
-    ) -> anyhow::Result<Self> {
-        let file = File::open(path)?;
-        let mmap = unsafe { Mmap::map(&file)? };
-        Self::open(Cursor::new(mmap), region, version)
-    }
-}
-
 impl<R> WzReader<R>
 where
     R: WzIO,
@@ -197,10 +182,13 @@ where
         let hdr = WzHeader::read_le(&mut rdr)?;
         rdr.seek(SeekFrom::Start(hdr.data_offset as u64))?;
 
+        log::info!("{hdr:?}");
+
         let encrypted_version: u16 = u16::read_le(&mut rdr)?;
         if ver.encrypted_version() != encrypted_version {
             anyhow::bail!("Wrong version: {}", encrypted_version);
         }
+        log::info!("version: {} - {}", encrypted_version, ver.0);
 
         Ok(Self {
             inner: rdr,
@@ -235,5 +223,28 @@ where
     fn set_pos(&mut self, p: u64) -> io::Result<()> {
         self.inner.seek(SeekFrom::Start(p))?;
         Ok(())
+    }
+}
+
+#[cfg(feature = "mmap")]
+mod mmap {
+    use std::{path::Path, io::Cursor, fs::File};
+
+    use memmap2::Mmap;
+
+    use crate::{WzReader, version::{WzRegion, WzVersion}};
+
+    pub type WzReaderMmap = WzReader<Cursor<Mmap>>;
+
+    impl WzReaderMmap {
+        pub fn open_file_mmap(
+            path: impl AsRef<Path>,
+            region: WzRegion,
+            version: WzVersion,
+        ) -> anyhow::Result<Self> {
+            let file = File::open(path)?;
+            let mmap = unsafe { Mmap::map(&file)? };
+            Self::open(Cursor::new(mmap), region, version)
+        }
     }
 }

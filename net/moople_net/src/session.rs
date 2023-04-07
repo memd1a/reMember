@@ -68,7 +68,7 @@ where
         // It is required to send the packets one-by-one, because the client doesn't support
         // other ways
         for pkt in buf.packets() {
-            self.codec.send(pkt).await?;
+            self.send_raw_packet(pkt).await?;
         }
 
         Ok(())
@@ -85,7 +85,6 @@ where
         data: P,
     ) -> NetResult<()> {
         self.encode_buffer.clear();
-
         let mut pw = MaplePacketWriter::new(&mut self.encode_buffer);
         pw.write_opcode(opcode);
         data.encode_packet(&mut pw)?;

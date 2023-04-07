@@ -34,7 +34,6 @@ impl WzImgTree {
         R: WzIO,
     {
         let mut tree = Tree::new();
-
         let obj = r.read_root_obj()?;
 
         let root_id = tree.insert(

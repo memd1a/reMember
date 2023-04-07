@@ -6,14 +6,16 @@ use std::{net::IpAddr, time::Duration};
 use async_trait::async_trait;
 use config::LoginConfig;
 use data::services::data::account::AccountServiceError;
-use data::services::data::character::{ItemStarterSet, CharacterCreateDTO, CharacterID};
+use data::services::data::character::{CharacterCreateDTO, CharacterID, ItemStarterSet};
+use data::services::session::MoopleMigrationKey;
 use data::{entities::character, services};
-use data::services::session::{MoopleMigrationKey, ClientKey};
 use login_state::LoginState;
+use moople_net::service::handler::SessionHandleResult;
+use moople_net::service::resp::PongResponse;
 use moople_net::{
     maple_router_handler,
     service::{
-        handler::{MapleServerSessionHandler, MapleSessionHandler, SessionError},
+        handler::{MapleServerSessionHandler, MapleSessionHandler},
         resp::{MigrateResponse, PacketOpcodeExt, ResponsePacket},
     },
     MapleSession,
@@ -24,14 +26,13 @@ use moople_packet::{
 };
 
 use proto95::shared::char::AvatarEquips;
-use proto95::shared::ExceptionLogReq;
+use proto95::shared::{ExceptionLogReq, PongReq};
 use proto95::{
     id::{FaceId, HairId, ItemId, Skin},
     login::{
         account::{
-            AccountInfo, BlockedIp, CheckPasswordReq, CheckPasswordResp, ConfirmEULAReq,
-            ConfirmEULAResp, LoginAccountData, LoginInfo, SetGenderReq, SetGenderResp,
-            SuccessResult,
+            BlockedIp, CheckPasswordReq, CheckPasswordResp, ConfirmEULAReq, ConfirmEULAResp,
+            LoginAccountData, LoginInfo, SetGenderReq, SetGenderResp, SuccessResult,
         },
         char::{
             CharRankInfo, CheckDuplicateIDReq, CheckDuplicateIDResp, CheckDuplicateIDResult,
@@ -39,7 +40,7 @@ use proto95::{
             MigrateStageInfo, SelectCharReq, SelectCharResp, SelectCharResult, SelectWorldCharList,
             SelectWorldResp, ViewChar, ViewCharWithRank,
         },
-        pin::{CheckPinReq, CheckPinResp, CheckPinResult, UpdatePinReq, UpdatePinResp},
+        pin::{CheckPinReq, CheckPinResp, UpdatePinReq, UpdatePinResp},
         world::{
             ChannelId, LogoutWorldReq, SelectWorldReq, WorldCheckUserLimitReq,
             WorldCheckUserLimitResp, WorldId, WorldInfoReq, WorldInfoResp, WorldReq,
@@ -55,20 +56,14 @@ use proto95::{
 };
 use tokio::net::TcpStream;
 
-//TODO right now if gender is not set and is updated via SetGenderReq the client key will not be set
-// As SetGenderResp(AccountInfoResp) does not set the client key
-
-use crate::login_state::LoginStage;
-
 pub type LoginResponse<T> = ResponsePacket<SendOpcodes, T>;
 pub type LoginResult<T> = Result<LoginResponse<T>, anyhow::Error>;
 
 pub struct LoginHandler {
     services: services::SharedServices,
     state: LoginState,
-    cfg: &'static LoginConfig,
     addr: IpAddr,
-    client_key: Option<ClientKey>,
+    cfg: &'static LoginConfig,
 }
 
 impl LoginHandler {
@@ -82,7 +77,6 @@ impl LoginHandler {
             state: LoginState::default(),
             cfg,
             addr,
-            client_key: None,
         }
     }
 }
@@ -96,13 +90,14 @@ impl MapleSessionHandler for LoginHandler {
         &mut self,
         packet: MaplePacket,
         session: &mut moople_net::MapleSession<Self::Transport>,
-    ) -> Result<(), SessionError<Self::Error>> {
+    ) -> Result<SessionHandleResult, Self::Error> {
         maple_router_handler!(
             handler,
             LoginHandler,
             MapleSession<TcpStream>,
-            SessionError<anyhow::Error>,
+            anyhow::Error,
             LoginHandler::handle_default,
+            PongReq => LoginHandler::handle_pong,
             CreateSecurityHandleReq => LoginHandler::handle_create_security_handle,
             UpdateScreenSettingReq => LoginHandler::handle_update_screen_setting,
             CheckPasswordReq => LoginHandler::handle_check_password,
@@ -122,9 +117,7 @@ impl MapleSessionHandler for LoginHandler {
             ExceptionLogReq => LoginHandler::handle_exception_log
         );
 
-        handler(self, session, packet.into_reader()).await?;
-
-        Ok(())
+        handler(self, session, packet.into_reader()).await
     }
 }
 
@@ -145,9 +138,13 @@ impl LoginHandler {
         &mut self,
         _op: RecvOpcodes,
         pr: MaplePacketReader<'_>,
-    ) -> anyhow::Result<()> {
+    ) -> anyhow::Result<SessionHandleResult> {
         log::info!("Unhandled packet: {:?}", pr.into_inner());
-        Ok(())
+        Ok(SessionHandleResult::Ok)
+    }
+
+    async fn handle_pong(&mut self, _req: PongReq) -> anyhow::Result<PongResponse> {
+        Ok(PongResponse)
     }
 
     async fn handle_exception_log(&mut self, _req: ExceptionLogReq) -> anyhow::Result<()> {
@@ -181,7 +178,7 @@ impl LoginHandler {
         self.state
             .update_account(|acc| self.services.data.account.accept_tos(acc))
             .await?;
-        self.state.reset_login();
+        self.state.reset();
 
         Ok(ConfirmEULAResp { success: true }.into())
     }
@@ -189,22 +186,21 @@ impl LoginHandler {
     async fn handle_check_pin(&mut self, req: CheckPinReq) -> LoginResult<CheckPinResp> {
         let acc = self.state.get_pin()?;
 
-        let result = if self.cfg.enable_pin {
+        Ok(if self.cfg.enable_pin {
             match req.pin.opt {
                 Some(pin) => {
                     if self.services.data.account.check_pin(acc, &pin.pin)? {
-                        CheckPinResult::Accepted
+                        CheckPinResp::Accepted
                     } else {
-                        CheckPinResult::InvalidPin
+                        CheckPinResp::InvalidPin
                     }
                 }
-                _ => CheckPinResult::EnterPin,
+                _ => CheckPinResp::EnterPin,
             }
         } else {
-            CheckPinResult::Accepted
-        };
-
-        Ok(CheckPinResp(result).into())
+            CheckPinResp::Accepted
+        }
+        .into())
     }
 
     async fn handle_register_pin(&mut self, req: UpdatePinReq) -> LoginResult<UpdatePinResp> {
@@ -236,6 +232,7 @@ impl LoginHandler {
 
         self.state.transition_login().unwrap();
 
+        //TODO this doesn't set the client key, maybe make it dc?
         Ok(SetGenderResp {
             gender,
             success: true,
@@ -252,12 +249,9 @@ impl LoginHandler {
 
     async fn handle_world_check_user_limit(
         &mut self,
-        req: WorldCheckUserLimitReq,
+        _req: WorldCheckUserLimitReq,
     ) -> LoginResult<WorldCheckUserLimitResp> {
         let _acc = self.state.get_server_selection()?;
-
-        let world = req.world;
-        log::info!("Server status - world: {world}");
 
         Ok(WorldCheckUserLimitResp {
             over_user_limit: false,
@@ -293,10 +287,7 @@ impl LoginHandler {
         &mut self,
         req: CheckPasswordReq,
     ) -> LoginResult<CheckPasswordResp> {
-        log::info!("handling check pw: {:?}", req);
-
         let login_result = self.services.data.account.try_login(&req.id, &req.pw).await;
-
         let hdr = LoginResultHeader::default();
 
         let res = match login_result {
@@ -308,35 +299,34 @@ impl LoginHandler {
                 ban_time: MapleTime::maple_default(),
             }),
             Ok(acc) => {
-                let account_info: AccountInfo = (&acc).into();
+                let account_info = (&acc).into();
+                self.state.transition_login_with_acc(acc)?;
+                let client_key = self
+                    .state
+                    .get_client_key()
+                    .expect("Must have client key after login");
 
-                //TODO generate an actualy client key
-                self.client_key = Some((account_info.id as u64).to_le_bytes());
-                let login_info = acc
-                    .gender
-                    .is_some()
+                let login_info = (!self.state.is_set_gender_stage())
                     .then_some(LoginInfo {
                         skip_pin: false,
                         login_opt: proto95::login::LoginOpt::EnableSecondPassword,
-                        client_key: self.client_key.unwrap(),
+                        client_key,
                     })
                     .into();
-                dbg!(&login_info);
 
-                log::info!("Logged into acc(#{}): {}", acc.id, acc.username);
-                self.state.transition_login_with_acc(acc)?;
-                match self.state.get_stage() {
-                    LoginStage::AcceptTOS => CheckPasswordResp::TOS(hdr),
-                    _ => CheckPasswordResp::Success(SuccessResult {
+                if self.state.is_accept_tos_stage() {
+                    CheckPasswordResp::TOS(hdr)
+                } else {
+                    CheckPasswordResp::Success(SuccessResult {
                         hdr,
                         account: LoginAccountData {
                             account_info,
                             login_info,
                         },
-                    }),
+                    })
                 }
             }
-            _ => unreachable!("{:?}", login_result),
+            _ => todo!("Unhandled Account Service Login Result: {:?}", login_result),
         };
 
         Ok(res.into())
@@ -344,7 +334,6 @@ impl LoginHandler {
 
     async fn handle_select_world(&mut self, req: SelectWorldReq) -> LoginResult<SelectWorldResp> {
         let acc = self.state.get_server_selection()?;
-        log::info!("Char list request");
         let char_list = self
             .services
             .data
@@ -355,8 +344,10 @@ impl LoginHandler {
 
         let char_list = SelectWorldCharList {
             characters,
+            //TODO pic handling
             login_opt: LoginOpt::NoSecondPassword1,
-            slot_count: 6,
+            slot_count: acc.character_slots as u32,
+            //TODO get buy count
             buy_char_count: 3,
         };
         self.state
@@ -451,8 +442,7 @@ impl LoginHandler {
         let (_, world, channel) = self.state.get_char_select()?;
 
         let acc = self.state.claim_account()?;
-
-        let client_key = self.client_key.expect("Must have client key");
+        let client_key = self.state.get_client_key()?;
 
         self.services
             .session_manager

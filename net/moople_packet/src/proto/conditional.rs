@@ -5,7 +5,7 @@ use either::Either;
 
 use crate::{reader::MaplePacketReader, writer::MaplePacketWriter, NetResult};
 
-use super::{DecodePacket, EncodePacket, PacketLen};
+use super::{DecodePacket, EncodePacket};
 
 pub trait MapleConditional<'de>: Sized {
     fn encode_packet_cond<B: BufMut>(
@@ -38,7 +38,14 @@ impl<T> From<CondOption<T>> for Option<T> {
     }
 }
 
-impl<T: PacketLen> PacketLen for CondOption<T> {
+impl<T: EncodePacket> EncodePacket for CondOption<T> {
+    fn encode_packet<B: BufMut>(&self, pw: &mut MaplePacketWriter<B>) -> NetResult<()> {
+        self.0
+            .as_ref()
+            .map(|p| p.encode_packet(pw))
+            .unwrap_or(Ok(()))
+    }
+
     const SIZE_HINT: Option<usize> = None;
 
     fn packet_len(&self) -> usize {
@@ -46,15 +53,9 @@ impl<T: PacketLen> PacketLen for CondOption<T> {
     }
 }
 
-impl<T: EncodePacket> EncodePacket for CondOption<T> {
-    fn encode_packet<B: BufMut>(&self, pw: &mut MaplePacketWriter<B>) -> NetResult<()> {
-        self.0.as_ref().map(|p| p.encode_packet(pw)).unwrap_or(Ok(()))
-    }
-}
-
 impl<'de, T> MapleConditional<'de> for CondOption<T>
 where
-    T: EncodePacket + DecodePacket<'de> + PacketLen,
+    T: EncodePacket + DecodePacket<'de>,
 {
     fn encode_packet_cond<B: BufMut>(
         &self,
@@ -103,22 +104,10 @@ impl<L, R> From<Either<L, R>> for CondEither<L, R> {
         CondEither(value)
     }
 }
-
-impl<L: PacketLen, R: PacketLen> PacketLen for CondEither<L, R> {
-    const SIZE_HINT: Option<usize> = None;
-
-    fn packet_len(&self) -> usize {
-        match &self.0 {
-            Either::Left(v) => v.packet_len(),
-            Either::Right(v) => v.packet_len()
-        }
-    }
-}
-
 impl<'de, L, R> MapleConditional<'de> for CondEither<L, R>
 where
-    L: EncodePacket + DecodePacket<'de> + PacketLen,
-    R: EncodePacket + DecodePacket<'de> + PacketLen,
+    L: EncodePacket + DecodePacket<'de>,
+    R: EncodePacket + DecodePacket<'de>,
 {
     fn encode_packet_cond<B: BufMut>(
         &self,

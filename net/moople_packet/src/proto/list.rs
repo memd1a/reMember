@@ -1,11 +1,11 @@
-use std::{fmt::Debug, slice};
 use std::marker::PhantomData;
+use std::{fmt::Debug, slice};
 
 use bytes::BufMut;
 
 use crate::{reader::MaplePacketReader, MaplePacketWriter, NetResult};
 
-use super::{DecodePacket, DecodePacketOwned, EncodePacket, PacketLen};
+use super::{DecodePacket, DecodePacketOwned, EncodePacket};
 
 pub trait MapleListLen: EncodePacket + DecodePacketOwned {
     fn to_len(&self) -> usize;
@@ -47,7 +47,7 @@ impl_list_index!(u16);
 impl_list_index!(u32);
 impl_list_index!(u64);
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct MapleIndexList<I, T> {
     pub items: Vec<(I, T)>,
 }
@@ -107,13 +107,7 @@ where
 
         Ok(())
     }
-}
 
-impl<I, T> PacketLen for MapleIndexList<I, T>
-where
-    T: PacketLen,
-    I: PacketLen,
-{
     const SIZE_HINT: Option<usize> = None;
 
     fn packet_len(&self) -> usize {
@@ -122,7 +116,7 @@ where
 }
 
 /// Like `MapleIndexList`just using zero index as terminator
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct MapleIndexListZ<I, T> {
     pub items: Vec<(I, T)>,
 }
@@ -190,21 +184,14 @@ where
 
         Ok(())
     }
-}
 
-impl<I, T> PacketLen for MapleIndexListZ<I, T>
-where
-    T: PacketLen,
-    I: MapleListIndex + PacketLen,
-{
     const SIZE_HINT: Option<usize> = None;
 
     fn packet_len(&self) -> usize {
         I::SIZE_HINT.unwrap() + self.items.iter().map(|v| v.packet_len()).sum::<usize>()
     }
 }
-
-#[derive(Clone)]
+#[derive(Clone, PartialEq)]
 pub struct MapleList<I, T> {
     pub items: Vec<T>,
     pub _index: PhantomData<I>,
@@ -282,13 +269,7 @@ where
 
         Ok(())
     }
-}
 
-impl<I, T> PacketLen for MapleList<I, T>
-where
-    T: PacketLen,
-    I: PacketLen,
-{
     const SIZE_HINT: Option<usize> = None;
 
     fn packet_len(&self) -> usize {
@@ -310,3 +291,37 @@ pub type MapleIndexListZ8<T> = MapleIndexListZ<u8, T>;
 pub type MapleIndexListZ16<T> = MapleIndexListZ<u16, T>;
 pub type MapleIndexListZ32<T> = MapleIndexListZ<u32, T>;
 pub type MapleIndexListZ64<T> = MapleIndexListZ<u64, T>;
+
+#[cfg(test)]
+mod tests {
+    use crate::proto::tests::enc_dec_test_all;
+
+    use super::*;
+
+    #[test]
+    fn list() {
+        enc_dec_test_all([
+            MapleList8::from(vec![1u8, 2, 3]),
+            MapleList8::from(vec![1]),
+            MapleList8::from(vec![]),
+        ]);
+    }
+
+    #[test]
+    fn index_list() {
+        enc_dec_test_all([
+            MapleIndexList8::from(vec![(1, 1u8), (3, 2), (2, 3)]),
+            MapleIndexList8::from(vec![(0, 1)]),
+            MapleIndexList8::from(vec![]),
+        ]);
+    }
+
+    #[test]
+    fn index_list_z() {
+        enc_dec_test_all([
+            MapleIndexList8::from(vec![(1, 1u8), (3, 2), (2, 3)]),
+            MapleIndexList8::from(vec![(1, 1)]),
+            MapleIndexList8::from(vec![]),
+        ]);
+    }
+}

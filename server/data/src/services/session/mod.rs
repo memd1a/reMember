@@ -1,15 +1,19 @@
 pub mod migration;
 pub mod session_data;
 pub mod session_manager;
-pub mod session_set;
-
 use std::net::IpAddr;
 use std::time::Duration;
+
+use moople_net::service::session_set::SessionSet;
 
 use self::{
     migration::MigrationManager,
     session_manager::{SessionBackend, OwnedSession, SessionManager},
 };
+
+use super::data::character::CharacterID;
+
+pub type MoopleSessionSet = SessionSet<CharacterID>;
 
 // Client uses a 8 byte session id
 pub type ClientKey = [u8; 8];
@@ -32,7 +36,7 @@ impl MoopleMigrationKey {
 #[derive(Debug)]
 pub struct GameSessionManager<Backend: SessionBackend> {
     session_man: SessionManager<uuid::Uuid, Backend>,
-    migration: MigrationManager<MoopleMigrationKey, OwnedSession<Backend::SessionData>>,
+    migration: MigrationManager<MoopleMigrationKey, OwnedSession<uuid::Uuid, Backend::SessionData>>,
 }
 
 impl<Backend> GameSessionManager<Backend>
@@ -44,6 +48,10 @@ where
             session_man: SessionManager::new(backend),
             migration: MigrationManager::new(migration_timeout),
         }
+    }
+
+    pub async fn close_session(&self, session: OwnedSession<uuid::Uuid, Backend::SessionData>) -> anyhow::Result<()> {
+        self.session_man.close_session(session).await
     }
 
     pub async fn create_migration_session(
@@ -62,7 +70,7 @@ where
     pub fn migrate_session(
         &self,
         migration_key: MoopleMigrationKey,
-        session: OwnedSession<Backend::SessionData>,
+        session: OwnedSession<uuid::Uuid, Backend::SessionData>,
     ) -> anyhow::Result<()> {
         self.migration.push(migration_key, session);
         Ok(())
@@ -71,7 +79,7 @@ where
     pub async fn claim_migration_session(
         &self,
         migration_key: MoopleMigrationKey,
-    ) -> anyhow::Result<OwnedSession<Backend::SessionData>> {
+    ) -> anyhow::Result<OwnedSession<uuid::Uuid, Backend::SessionData>> {
         self.migration.take_timeout(&migration_key).await
     }
 }

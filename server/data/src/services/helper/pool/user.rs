@@ -1,13 +1,11 @@
 use moople_packet::proto::list::MapleIndexListZ;
 use proto95::{
-    game::{
-        user::{
-            remote::{
-                GuildMarkData, TamingMobData, UserEnterFieldResp, UserLeaveFieldResp, UserMoveResp,
-                UserRemoteInitData,
-            },
-            UserMoveReq,
+    game::user::{
+        remote::{
+            GuildMarkData, TamingMobData, UserEnterFieldResp, UserLeaveFieldResp, UserMoveResp,
+            UserRemoteInitData,
         },
+        UserMoveReq,
     },
     id::{job_id::JobId, ItemId},
     shared::{
@@ -16,7 +14,7 @@ use proto95::{
     },
 };
 
-use crate::services::{session::session_set::SessionSet, data::character::CharacterID};
+use crate::services::{data::character::CharacterID, session::MoopleSessionSet};
 
 use super::{Pool, PoolItem};
 
@@ -99,14 +97,14 @@ impl Pool<User> {
         &self,
         id: CharacterID,
         req: UserMoveReq,
-        sessions: &SessionSet,
+        sessions: &MoopleSessionSet,
     ) -> anyhow::Result<()> {
         let pkt = UserMoveResp {
             char_id: id as u32,
             move_path: req.move_path,
         };
 
-        sessions.broadcast_pkt(pkt, id as i32)?;
+        sessions.broadcast_pkt(pkt, id)?;
         Ok(())
     }
 }

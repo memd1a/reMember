@@ -12,19 +12,21 @@ use data::entities::character;
 use data::services::field::FieldJoinHandle;
 use data::services::helper::pool::drop::{DropLeaveParam, DropTypeValue};
 use data::services::session::session_data::OwnedMoopleSession;
-use data::services::session::session_set::{SharedSessionData, SharedSessionDataRef};
 use data::services::session::{ClientKey, MoopleMigrationKey};
 use data::services::SharedServices;
 use moople_net::service::handler::BroadcastSender;
 use moople_net::service::packet_buffer::PacketBuffer;
 use moople_net::service::resp::PacketOpcodeExt;
+
+use moople_net::service::handler::SessionHandleResult;
+use moople_net::service::resp::{PongResponse};
 use moople_net::service::session_svc::SharedSessionHandle;
 use moople_net::SessionTransport;
 use moople_net::{
     maple_router_handler,
     service::{
         handler::{
-            MakeServerSessionHandler, MapleServerSessionHandler, MapleSessionHandler, SessionError,
+            MakeServerSessionHandler, MapleServerSessionHandler, MapleSessionHandler,
         },
         resp::{MigrateResponse, ResponsePacket},
     },
@@ -34,6 +36,7 @@ use moople_net::{
 use moople_packet::EncodePacket;
 
 use moople_packet::proto::list::{MapleIndexList8, MapleIndexListZ};
+use moople_packet::proto::partial::PartialFlag;
 use moople_packet::proto::time::MapleExpiration;
 use moople_packet::proto::CondOption;
 use moople_packet::{
@@ -57,6 +60,7 @@ use proto95::id::{FaceId, HairId, ItemId, Skin};
 use proto95::shared::char::{AvatarData, AvatarEquips, PetIds, SkillInfo, TeleportRockInfo};
 use proto95::shared::movement::Movement;
 use proto95::shared::{FootholdId, PongReq, Vec2};
+use proto95::shared::inventory::InvChangeSlotPosReq;
 use proto95::{
     game::{
         chat::{ChatMsgReq, UserChatMsgResp},
@@ -82,7 +86,6 @@ use proto95::{
         item::Item,
         UpdateScreenSettingReq,
     },
-    stats::PartialFlag,
 };
 use repl::GameRepl;
 use tokio::net::TcpStream;
@@ -190,15 +193,12 @@ impl GameHandler {
 
         let avatar_data = map_char_to_avatar(&session.char.model);
 
-        let mut packet_buf = PacketBuffer::new();
-
         let join_field = services
             .field
             .join_field(
                 session.char.model.id,
                 avatar_data.clone(),
                 sess_handle.clone(),
-                &mut packet_buf,
                 MapId(session.char.model.map_id as u32),
             )
             .await?;
@@ -214,9 +214,9 @@ impl GameHandler {
             fh: 0,
             sess_handle,
             field: join_field,
-            packet_buf,
             repl: GameRepl::new(),
             avatar_data,
+            packet_buf: PacketBuffer::new(),
         })
     }
 }
@@ -230,13 +230,14 @@ impl MapleSessionHandler for GameHandler {
         &mut self,
         packet: MaplePacket,
         session: &mut moople_net::MapleSession<Self::Transport>,
-    ) -> Result<(), SessionError<Self::Error>> {
+    ) -> Result<SessionHandleResult, Self::Error> {
         maple_router_handler!(
             handler,
             GameHandler,
             MapleSession<TcpStream>,
-            SessionError<anyhow::Error>,
+            anyhow::Error,
             GameHandler::handle_default,
+            PongReq => GameHandler::handle_pong,
             UpdateScreenSettingReq => GameHandler::handle_update_screen_setting,
             ChatMsgReq => GameHandler::handle_chat_msg,
             UserMoveReq => GameHandler::handle_movement,
@@ -248,20 +249,15 @@ impl MapleSessionHandler for GameHandler {
             MobMoveReq => GameHandler::handle_mob_move,
             UserMeleeAttackReq => GameHandler::handle_melee_attack,
             UserSkillUpReq => GameHandler::handle_skill_up,
-            PongReq => GameHandler::handle_pong,
             UserHitReq => GameHandler::handle_user_hit,
             UserStatChangeReq => GameHandler::handle_stat_change,
+            InvChangeSlotPosReq => GameHandler::handle_inv_change_slot,
         );
 
-        handler(self, session, packet.into_reader()).await?;
-        self.flush_packet_buf(session)
-            .await
-            .map_err(SessionError::Session)?;
-
-        Ok(())
+        Ok(handler(self, session, packet.into_reader()).await?)
     }
 
-    async fn finish(self, is_migrating: bool) -> Result<(), SessionError<Self::Error>> {
+    async fn finish(self, is_migrating: bool) -> Result<(), Self::Error> {
         log::info!("Finishing game session...");
         if is_migrating {
             self.services
@@ -269,9 +265,14 @@ impl MapleSessionHandler for GameHandler {
                 .migrate_session(
                     MoopleMigrationKey::new(self.client_key, self.addr),
                     self.session,
-                )
-                .map_err(SessionError::Session)?;
+                )?;
+        } else {
+            self.services
+                .session_manager
+                .close_session(self.session)
+                .await?;
         }
+
         Ok(())
     }
 }
@@ -312,10 +313,6 @@ impl GameHandler {
         .into())
     }
 
-    async fn handle_pong(&mut self, _req: PongReq) -> anyhow::Result<()> {
-        Ok(())
-    }
-
     async fn handle_stat_change(
         &mut self,
         req: UserStatChangeReq,
@@ -344,6 +341,14 @@ impl GameHandler {
         .into())
     }
 
+    async fn handle_inv_change_slot(&mut self, req: InvChangeSlotPosReq) -> anyhow::Result<()>  {
+        Ok(())
+    }
+
+    async fn handle_pong(&mut self, _req: PongReq) -> anyhow::Result<PongResponse> {
+        Ok(PongResponse)
+    }
+
     async fn handle_skill_up(&mut self, req: UserSkillUpReq) -> GameResult<ChangeSkillRecordResp> {
         Ok(ChangeSkillRecordResp {
             reset_excl: true,
@@ -357,16 +362,6 @@ impl GameHandler {
             updated_secondary_stat: false,
         }
         .into())
-    }
-
-    async fn flush_packet_buf<Trans: SessionTransport + Unpin>(
-        &mut self,
-        sess: &mut MapleSession<Trans>,
-    ) -> anyhow::Result<()> {
-        sess.send_packet_buffer(&self.packet_buf).await?;
-        self.packet_buf.clear();
-
-        Ok(())
     }
 
     pub fn enable_char(&mut self) -> CharStatChangedResp {
@@ -387,9 +382,9 @@ impl GameHandler {
         &mut self,
         _op: RecvOpcodes,
         pr: MaplePacketReader<'_>,
-    ) -> anyhow::Result<()> {
+    ) -> anyhow::Result<SessionHandleResult> {
         log::info!("Unhandled packet: {:?}", pr.into_inner());
-        Ok(())
+        Ok(SessionHandleResult::Ok)
     }
 
     async fn init_char(&mut self, sess: &mut MapleSession<TcpStream>) -> anyhow::Result<()> {
@@ -407,7 +402,6 @@ impl GameHandler {
             .await?;
 
         sess.send_packet(self.enable_char()).await?;
-        self.flush_packet_buf(sess).await?;
 
         Ok(())
     }
@@ -431,13 +425,12 @@ impl GameHandler {
             .map(|(slot, item)| (slot as u8 + 1, Item::Stack(item.item.as_ref().into())))
             .collect();
 
-        // TODO cash slots
         let invsize = [
             char.model.equip_slots as u8,
             char.model.use_slots as u8,
             char.model.setup_slots as u8,
             char.model.etc_slots as u8,
-            char.model.equip_slots as u8,
+            char.model.cash_slots as u8,
         ];
 
         let char_equipped = CharDataEquipped {
@@ -518,22 +511,20 @@ impl GameHandler {
 
     async fn handle_update_screen_setting(
         &mut self,
-        req: UpdateScreenSettingReq,
+        _req: UpdateScreenSettingReq,
     ) -> anyhow::Result<()> {
-        dbg!(&req);
         Ok(())
     }
 
     async fn handle_melee_attack(&mut self, req: UserMeleeAttackReq) -> anyhow::Result<()> {
-        dbg!(&req);
         for target in req.targets {
             let dmg = target.hits.iter().sum::<u32>();
             self.field
                 .attack_mob(
                     target.mob_id,
                     dmg,
-                    self.session.char.model.id as i32,
-                    &mut self.packet_buf,
+                    self.session.char.model.id,
+                    &mut self.sess_handle,
                 )
                 .await?;
         }
@@ -550,8 +541,7 @@ impl GameHandler {
             .remove_drop(
                 req.drop_id,
                 DropLeaveParam::UserPickup(self.session.char.model.id as u32),
-            )
-            .await?;
+            )?;
         Ok(self.enable_char().into())
     }
 
@@ -566,8 +556,7 @@ impl GameHandler {
                 start_pos: self.pos,
                 value: DropTypeValue::Mesos(req.money),
                 quantity: 1,
-            })
-            .await?;
+            })?;
         Ok(self.enable_char().into())
     }
 
@@ -604,9 +593,7 @@ impl GameHandler {
         let ctrl_sn = req.ctrl_sn;
         let id = req.id;
 
-        self.field
-            .update_mob_pos(req, self.session.char.model.id)
-            .await?;
+        self.field.update_mob_pos(req, self.session.char.model.id)?;
 
         Ok(MobMoveCtrlAckResp {
             id,
@@ -647,11 +634,16 @@ impl GameHandler {
                 .map(|(k, _)| *k)
                 .unwrap_or_default() as i32;
 
-            _ = self
-                .services
-                .data
-                .char
-                .save_char(self.session.char.model.clone().into());
+        self.field = self
+            .services
+            .field
+            .join_field(
+                self.session.char.model.id,
+                self.avatar_data.clone(),
+                self.sess_handle.clone(),
+                MapId(self.session.char.model.map_id as u32),
+            )
+            .await?;
 
             self.field = self
                 .services
@@ -660,7 +652,6 @@ impl GameHandler {
                     self.session.char.model.id,
                     self.avatar_data.clone(),
                     self.sess_handle.clone(),
-                    &mut self.packet_buf,
                     MapId(self.session.char.model.map_id as u32),
                 )
                 .await?;
@@ -696,7 +687,6 @@ impl GameHandler {
                     self.session.char.model.id,
                     self.avatar_data.clone(),
                     self.sess_handle.clone(),
-                    &mut self.packet_buf,
                     MapId(self.session.char.model.map_id as u32),
                 )
                 .await?;
@@ -708,19 +698,15 @@ impl GameHandler {
 
     async fn handle_movement(&mut self, req: UserMoveReq) -> anyhow::Result<()> {
         self.pos = req.move_path.pos;
-        let last_fh = req.move_path.moves.iter().rev().find_map(|mv| match mv {
-            Movement::Normal(d) => Some(d.foothold),
-            _ => None,
-        });
+        let last = req.move_path.get_last_pos_fh();
 
-        if let Some(fh) = last_fh {
-            self.fh = fh;
+        if let Some((pos, fh)) = last {
+            self.pos = pos;
+            self.fh = fh.unwrap_or(self.fh);
         }
-        log::info!("User move req @ {:?}", req.move_path.pos);
 
         self.field
-            .update_user_pos(req, self.session.char.model.id)
-            .await?;
+            .update_user_pos(req, self.session.char.model.id)?;
         Ok(())
     }
 

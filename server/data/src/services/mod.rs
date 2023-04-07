@@ -85,7 +85,7 @@ impl Services {
             .await?;
 
         let job = JobGroup::Legend;
-        let char_id = self
+        let _char_id = self
             .data
             .char
             .create_character(

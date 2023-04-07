@@ -20,13 +20,19 @@ either = "1.8.1"
 enum-map = "2.4.2"
 futures = "0.3.26"
 game_data = { version = "0.1.0", path = "../../data/game_data" }
+geo = "0.24.1"
+geo-svg = "0.5.0"
+geo-types = { version = "0.7.9", features = ["rstar"] }
 itertools = "0.10.5"
 log = "0.4.17"
 moople_net = { version = "0.1.0", path = "../../net/moople_net" }
 moople_packet = { version = "0.1.0", path = "../../net/moople_packet" }
 num_enum = "0.5.11"
 proto95 = { version = "0.1.0", path = "../proto95" }
+ractor = "0.7.5"
 rand = "0.8.5"
+raqote = "0.8.2"
+rstar = "0.10.0"
 sea-orm = { version = "^0", features = [ "sqlx-sqlite", "sqlx-postgres", "runtime-tokio-native-tls", "macros" ]}
 serde = "1.0.155"
 thiserror = "1.0.39"

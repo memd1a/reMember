@@ -15,7 +15,7 @@ use moople_packet::{
 };
 use num_enum::{IntoPrimitive, TryFromPrimitive};
 
-use crate::recv_opcodes::RecvOpcodes;
+use crate::{recv_opcodes::RecvOpcodes, send_opcodes::SendOpcodes};
 
 pub type NameStr = FixedPacketString<13>;
 
@@ -43,6 +43,10 @@ packet_opcode!(UpdateScreenSettingReq, RecvOpcodes::UpdateScreenSetting);
 #[derive(MooplePacket, Debug)]
 pub struct PongReq;
 packet_opcode!(PongReq, RecvOpcodes::AliveAck);
+
+#[derive(MooplePacket, Debug, Clone)]
+pub struct PingResp;
+packet_opcode!(PingResp, SendOpcodes::AliveReq);
 
 #[derive(Debug, Eq, PartialEq, Copy, Clone, TryFromPrimitive, IntoPrimitive, Default)]
 #[repr(u8)]

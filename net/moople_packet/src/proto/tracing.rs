@@ -22,6 +22,12 @@ where
     fn encode_packet<Buf: BufMut>(&self, pw: &mut MaplePacketWriter<Buf>) -> NetResult<()> {
         self.value.encode_packet(pw)
     }
+
+    const SIZE_HINT: Option<usize> = <&'a T>::SIZE_HINT;
+
+    fn packet_len(&self) -> usize {
+        self.value.packet_len()
+    }
 }
 
 pub struct TracingStruct {

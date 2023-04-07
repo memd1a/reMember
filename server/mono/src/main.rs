@@ -117,9 +117,11 @@ async fn main() -> anyhow::Result<()> {
         _ => BasicHandshakeGenerator::v95(),
     };
 
-    let meta = Box::new(MetaService::load_from_dir("../../game_data/rbin".into())?);
+    let meta = Box::new(MetaService::load_from_dir("../../game_data/rbin")?);
+    // Meta will be available all the time
+    let static_meta = Box::leak(meta);
 
-    let services = Services::seeded_in_memory(servers, Box::leak(meta))
+    let services = Services::seeded_in_memory(servers, static_meta)
         .await?
         .as_shared();
     let (acc_id, char_id) = services.seed_acc_char().await?;

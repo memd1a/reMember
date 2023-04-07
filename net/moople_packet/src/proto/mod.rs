@@ -1,3 +1,4 @@
+pub mod partial;
 pub mod bits;
 pub mod conditional;
 pub mod constant;
@@ -16,7 +17,9 @@ use bytes::BufMut;
 
 use crate::{reader::MaplePacketReader, writer::MaplePacketWriter, MaplePacket, NetResult};
 pub use conditional::{CondEither, CondOption};
-pub use list::{MapleIndexList, MapleList16, MapleList32, MapleList64, MapleList8};
+pub use list::{
+    MapleIndexList, MapleList, MapleList16, MapleList32, MapleList64, MapleList8, MapleListIndexZ,
+};
 pub use wrapped::{PacketTryWrapped, PacketWrapped};
 
 pub trait DecodePacket<'de>: Sized {
@@ -59,6 +62,10 @@ pub trait DecodePacket<'de>: Sized {
 }
 
 pub trait EncodePacket: Sized {
+    const SIZE_HINT: Option<usize>;
+
+    fn packet_len(&self) -> usize;
+
     fn encode_packet<T: BufMut>(&self, pw: &mut MaplePacketWriter<T>) -> NetResult<()>;
 
     /// Encodes this data as slice
@@ -81,32 +88,19 @@ pub trait EncodePacket: Sized {
     }
 }
 
+pub trait DecodePacketSized<'de, T>: Sized {
+    fn decode_packet_sized(pr: &mut MaplePacketReader<'de>, size: usize) -> NetResult<Self>;
+}
+
+impl<'de, T> DecodePacketSized<'de, T> for Vec<T> where T: DecodePacket<'de> {
+    fn decode_packet_sized(pr: &mut MaplePacketReader<'de>, size: usize) -> NetResult<Self> {
+        T::decode_packet_n(pr, size)
+    }
+}
+
 pub trait DecodePacketOwned: for<'de> DecodePacket<'de> {}
 impl<T> DecodePacketOwned for T where T: for<'de> DecodePacket<'de> {}
 
-pub trait PacketLen {
-    const SIZE_HINT: Option<usize>;
-
-    fn packet_len(&self) -> usize;
-}
-
-/// Helper type to calculate size hint
-pub struct SizeHint(pub Option<usize>);
-
-impl SizeHint {
-    pub const fn zero() -> Self {
-        Self(Some(0))
-    }
-
-    /// Sum two Option<usize>
-    /// When const traits become stable Add can be implemented
-    pub const fn add(self, rhs: Self) -> Self {
-        Self(match (self.0, rhs.0) {
-            (Some(a), Some(b)) => Some(a + b),
-            _ => None,
-        })
-    }
-}
 
 macro_rules! impl_packet {
     ( $($name: ident)* ) => {
@@ -118,6 +112,16 @@ macro_rules! impl_packet {
                     $($name.encode_packet(pw)?;)*
                     Ok(())
                 }
+
+                const SIZE_HINT: Option<usize> = $crate::util::SizeHint::zero()
+                        $(.add($crate::util::SizeHint($name::SIZE_HINT)))*.0;
+
+                fn packet_len(&self) -> usize {
+                    #[allow(non_snake_case)]
+                    let ($($name,)*) = self;
+
+                    $($name.packet_len() +)*0
+                }
             }
 
 
@@ -128,18 +132,6 @@ macro_rules! impl_packet {
                         ($($name::decode_packet(pr)?,)*)
                     ))
                 }
-            }
-
-            impl<$($name,)*> $crate::proto::PacketLen for ($($name,)*)
-                where $($name: $crate::proto::PacketLen,)* {
-                    const SIZE_HINT: Option<usize> = SizeHint::zero()$(.add(SizeHint($name::SIZE_HINT)))*.0;
-
-                    fn packet_len(&self) -> usize {
-                        #[allow(non_snake_case)]
-                        let ($($name,)*) = self;
-
-                        $($name.packet_len() +)*0
-                    }
             }
     }
 }
@@ -165,7 +157,30 @@ impl_for_tuples!(impl_packet);
 
 #[cfg(test)]
 mod tests {
-    use super::PacketLen;
+    use crate::{DecodePacketOwned, EncodePacket};
+
+    /// Helper function to test If encoding matches decoding
+    pub(crate) fn enc_dec_test<T>(val: T)
+    where
+        T: EncodePacket + DecodePacketOwned + PartialEq + std::fmt::Debug,
+    {
+        let data = val.to_packet().expect("encode");
+        let mut pr = data.into_reader();
+        let decoded = T::decode_packet(&mut pr).expect("decode");
+
+        assert_eq!(val, decoded);
+    }
+
+    /// Helper function to test If encoding matches decoding
+    pub(crate) fn enc_dec_test_all<T>(vals: impl IntoIterator<Item = T>)
+    where
+        T: EncodePacket + DecodePacketOwned + PartialEq + std::fmt::Debug,
+    {
+        for val in vals {
+            enc_dec_test(val);
+        }
+    }
+
     #[test]
     fn tuple_size() {
         assert_eq!(<((), (),)>::SIZE_HINT, Some(0));

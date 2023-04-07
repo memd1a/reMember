@@ -39,6 +39,12 @@ impl<const N: usize> EncodePacket for Padding<N> {
 
         Ok(())
     }
+
+    const SIZE_HINT: Option<usize> = Some(N);
+
+    fn packet_len(&self) -> usize {
+        N
+    }
 }
 
 impl<'de, const N: usize> DecodePacket<'de> for Padding<N> {

@@ -65,6 +65,19 @@ macro_rules! maple_packet_enum {
                 Ok(())
 
             }
+
+
+            const SIZE_HINT: Option<usize> = None;
+
+            fn packet_len(&self) -> usize {
+                match self {
+                    $(
+                        Self::$variant_name(v) => {
+                            <$ix_ty>::SIZE_HINT.unwrap() + v.packet_len()
+                        }
+                    ),*
+                }
+            }
         }
 
         impl<'de> $crate::proto::DecodePacket<'de> for $name {
@@ -79,20 +92,6 @@ macro_rules! maple_packet_enum {
                     ),*
                     _ => return Err($crate::NetError::InvalidEnumDiscriminant(ix as usize))
                 })
-            }
-        }
-
-        impl $crate::proto::PacketLen for $name {
-            const SIZE_HINT: Option<usize> = None;
-
-            fn packet_len(&self) -> usize {
-                match self {
-                    $(
-                        Self::$variant_name(v) => {
-                            <$ix_ty>::SIZE_HINT.unwrap() + v.packet_len()
-                        }
-                    ),*
-                }
             }
         }
     };

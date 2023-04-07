@@ -1,17 +1,22 @@
 use moople_derive::MooplePacket;
 use moople_packet::{
     packet_opcode,
-    proto::{list::MapleIndexListZ8, option::MapleOption8, MapleList32, time::MapleDurationMs32},
+    proto::{
+        list::MapleIndexListZ8, option::MapleOption8, partial::PartialFlag,
+        time::MapleDurationMs32, MapleList32,
+    },
 };
 
 use crate::{
     id::{job_id::JobId, ItemId, SkillId},
     send_opcodes::SendOpcodes,
     shared::{
-        char::{AvatarData, CharacterId, RemoteCharSecondaryStatPartial, RemoteCharSecondaryStatFlags},
-        FootholdId, Vec2, TagPoint, movement::MovePath,
+        char::{
+            AvatarData, CharacterId, RemoteCharSecondaryStatFlags, RemoteCharSecondaryStatPartial,
+        },
+        movement::MovePath,
+        FootholdId, TagPoint, Vec2,
     },
-    stats::PartialFlag,
 };
 
 use super::ActionDir;
@@ -128,14 +133,13 @@ pub struct UserLeaveFieldResp {
 }
 packet_opcode!(UserLeaveFieldResp, SendOpcodes::UserLeaveField);
 
-
 #[derive(MooplePacket, Debug)]
 pub struct UserSkillPrepareResp {
     pub char_id: CharacterId,
     pub skill_id: SkillId,
     pub slv: u8,
     pub action_dir: ActionDir,
-    pub action_speed: u8
+    pub action_speed: u8,
 }
 packet_opcode!(UserSkillPrepareResp, SendOpcodes::UserSkillPrepare);
 
@@ -145,9 +149,12 @@ pub struct UserMovingShootPrepareResp {
     pub level: u8,
     pub skill: MapleOption8<SkillId>,
     pub action_dir: ActionDir,
-    pub action_speed: u8
+    pub action_speed: u8,
 }
-packet_opcode!(UserMovingShootPrepareResp, SendOpcodes::UserMovingShootAttackPrepare);
+packet_opcode!(
+    UserMovingShootPrepareResp,
+    SendOpcodes::UserMovingShootAttackPrepare
+);
 
 #[derive(MooplePacket, Debug)]
 pub struct UserSkillCancelResp {
@@ -160,25 +167,30 @@ packet_opcode!(UserSkillCancelResp, SendOpcodes::UserSkillCancel);
 pub struct UserEmotionResp {
     pub char_id: CharacterId,
     pub emotion: u32,
-    pub dur: MapleDurationMs32
+    pub dur: MapleDurationMs32,
 }
 packet_opcode!(UserEmotionResp, SendOpcodes::UserEmotion);
 
 #[derive(MooplePacket, Debug)]
 pub struct UserSetActiveItemEffectResp {
     pub char_id: CharacterId,
-    pub item: ItemId
+    pub item: ItemId,
 }
-packet_opcode!(UserSetActiveItemEffectResp, SendOpcodes::UserSetActiveEffectItem);
+packet_opcode!(
+    UserSetActiveItemEffectResp,
+    SendOpcodes::UserSetActiveEffectItem
+);
 
 #[derive(MooplePacket, Debug)]
 pub struct UserShowUpgradeTombEffectResp {
     pub char_id: CharacterId,
     pub item: ItemId,
-    pub pos: TagPoint
+    pub pos: TagPoint,
 }
-packet_opcode!(UserShowUpgradeTombEffectResp, SendOpcodes::UserShowUpgradeTombEffect);
-
+packet_opcode!(
+    UserShowUpgradeTombEffectResp,
+    SendOpcodes::UserShowUpgradeTombEffect
+);
 
 #[derive(MooplePacket, Debug)]
 pub struct UserThrowGrenadeResp {
@@ -186,24 +198,26 @@ pub struct UserThrowGrenadeResp {
     pub pos: TagPoint,
     pub key_down: MapleDurationMs32,
     pub skill: SkillId,
-    pub slv: u32
+    pub slv: u32,
 }
 packet_opcode!(UserThrowGrenadeResp, SendOpcodes::UserThrowGrenade);
 
 #[derive(MooplePacket, Debug)]
 pub struct UserMoveResp {
     pub char_id: CharacterId,
-    pub move_path: MovePath
+    pub move_path: MovePath,
 }
 packet_opcode!(UserMoveResp, SendOpcodes::UserMove);
 
 #[derive(MooplePacket, Debug)]
 pub struct UserSetActivePortablChairResp {
     pub char_id: CharacterId,
-    pub chair_id: ItemId
+    pub chair_id: ItemId,
 }
-packet_opcode!(UserSetActivePortablChairResp, SendOpcodes::UserSetActivePortableChair);
-
+packet_opcode!(
+    UserSetActivePortablChairResp,
+    SendOpcodes::UserSetActivePortableChair
+);
 
 #[derive(MooplePacket, Debug)]
 pub struct UserAvatarModifiedResp {
@@ -220,46 +234,45 @@ pub struct UserAvatarModifiedResp {
         2 => speed(u8)
         3 => carry item effect(u8)
 
-    
-    
-     */
 
+
+     */
     pub couple: MapleOption8<CoupleRingData>,
     pub marriage: MapleOption8<MarriageData>,
-    pub completed_set_item_id: u32
-
-
-
+    pub completed_set_item_id: u32,
 }
 packet_opcode!(UserAvatarModifiedResp, SendOpcodes::UserAvatarModified);
 
 #[derive(MooplePacket, Debug)]
 pub struct UserSetTemporaryStatResp {
-    stats: PartialSecondaryStats
+    stats: PartialSecondaryStats,
 }
 packet_opcode!(UserSetTemporaryStatResp, SendOpcodes::UserTemporaryStatSet);
 
 #[derive(MooplePacket, Debug)]
 pub struct UserResetTemporaryStatResp {
-    flags: RemoteCharSecondaryStatFlags
+    flags: RemoteCharSecondaryStatFlags,
 }
-packet_opcode!(UserResetTemporaryStatResp, SendOpcodes::UserTemporaryStatReset);
+packet_opcode!(
+    UserResetTemporaryStatResp,
+    SendOpcodes::UserTemporaryStatReset
+);
 
 #[derive(MooplePacket, Debug)]
 pub struct UserReceiveHPResp {
     pub hp: u32,
-    pub max_hp: u32
+    pub max_hp: u32,
 }
 packet_opcode!(UserReceiveHPResp, SendOpcodes::UserHP);
 
 #[derive(MooplePacket, Debug)]
 pub struct UserGuildNameChangedResp {
-    pub guild_name: String
+    pub guild_name: String,
 }
 packet_opcode!(UserGuildNameChangedResp, SendOpcodes::UserGuildNameChanged);
 
 #[derive(MooplePacket, Debug)]
 pub struct UserGuildMarkChangedResp {
-    pub guild_mark: GuildMarkData
+    pub guild_mark: GuildMarkData,
 }
 packet_opcode!(UserGuildMarkChangedResp, SendOpcodes::UserGuildMarkChanged);

@@ -21,7 +21,7 @@ pub struct MoopleSessionData {
     pub skills: BTreeMap<SkillId, skill::Model>,
 }
 
-pub type OwnedMoopleSession = OwnedSession<MoopleSessionData>;
+pub type OwnedMoopleSession = OwnedSession<uuid::Uuid, MoopleSessionData>;
 
 #[derive(Debug)]
 pub struct MoopleSessionBackend {

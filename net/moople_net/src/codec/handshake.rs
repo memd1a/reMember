@@ -3,7 +3,6 @@ use std::io::{Read, Write};
 use arrayvec::ArrayString;
 use moople_packet::{
     proto::wrapped::PacketWrapped, DecodePacket, EncodePacket, MaplePacketWriter, NetError,
-    PacketLen,
 };
 use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 
@@ -96,7 +95,7 @@ impl PacketWrapped for Handshake {
     fn packet_into_inner(&self) -> Self::Inner {
         (
             self.version,
-            self.subversion.clone(),
+            self.subversion,
             self.iv_enc.0,
             self.iv_dec.0,
             self.locale,

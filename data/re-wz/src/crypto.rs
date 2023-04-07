@@ -12,7 +12,7 @@ use crate::{
 };
 
 // Must be a multiple of WZ_KEY_LEN
-pub const WZ_KEY_BUFFER_LEN: usize = WZ_KEY_LEN * 16_000; // 256
+pub const WZ_KEY_BUFFER_LEN: usize = WZ_KEY_LEN * 256; // 256
 pub type WzKeyBufferLen = U256;
 
 // Waiting for this to become stable...

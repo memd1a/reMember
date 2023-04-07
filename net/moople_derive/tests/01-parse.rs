@@ -4,7 +4,7 @@ use moople_derive::MooplePacket;
 
 use moople_packet::{
     proto::conditional::{CondEither, CondOption},
-    DecodePacket, EncodePacket, MaplePacketWriter, PacketLen,
+    DecodePacket, EncodePacket, MaplePacketWriter,
 };
 
 #[derive(MooplePacket)]
@@ -39,8 +39,6 @@ impl TryFrom<u16> for TestOpcode {
     }
 }
 
-//impl NetOpcode for TestOpcode {}
-
 #[derive(MooplePacket, Debug, PartialEq, Eq)]
 pub struct Packet3<'a> {
     name: &'a str,
@@ -68,6 +66,14 @@ pub struct Packet5 {
     n: u32,
     #[pkt(either(field = "n", cond = "check_n_even"))]
     either: CondEither<String, bool>,
+}
+
+
+#[derive(MooplePacket, Debug, PartialEq, Eq)]
+pub struct Packet6 {
+    n: u32,
+    #[pkt(size = "n")]
+    data: Vec<u8>
 }
 
 fn test_encode_decode<'de, T>(data: T, buf: &'de mut BytesMut)
@@ -117,5 +123,10 @@ fn main() {
     test_encode_decode!(Packet5 {
         n: 1,
         either: CondEither(Either::Right(false))
+    });
+
+    test_encode_decode!(Packet6 {
+        n: 1,
+        data: vec![0xaa]
     });
 }

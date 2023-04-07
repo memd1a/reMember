@@ -52,7 +52,7 @@ fn map_equip_to_active_model(item: &EquipItem) -> equip_item::ActiveModel {
         vicious_hammers: Set(item.hammers_used as i32),
         //TODO optional
         owner_tag: Set(item.owner.clone().unwrap_or(String::new())),
-        level: Set(0 as i32),
+        level: Set(0),
         upgrade_slots: Set(item.slots as i32),
         str: Set(stats[EquipStat::Str] as i32),
         dex: Set(stats[EquipStat::Dex] as i32),
@@ -501,6 +501,6 @@ mod tests {
         assert_eq!(inv.equipped.len(), 3);
         assert_eq!(inv.etc.get(0).unwrap().quantity, 1 + 5);
 
-        let eq = svc.load_equipped_items(char_id).await.unwrap();
+        let _eq = svc.load_equipped_items(char_id).await.unwrap();
     }
 }

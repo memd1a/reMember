@@ -12,7 +12,10 @@ use moople_packet::{
 use crate::{
     id::MapId,
     send_opcodes::SendOpcodes,
-    shared::{char::{CharacterId, CharDataAll, CharDataFlagsAll, CharDataHeader}, TagPoint},
+    shared::{
+        char::{CharDataHeader, CharacterId, CharDataFlagsAll, CharDataAll},
+        TagPoint,
+    },
 };
 
 #[derive(MooplePacket, Debug)]

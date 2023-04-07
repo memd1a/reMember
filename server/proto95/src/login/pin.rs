@@ -4,7 +4,7 @@ use moople_packet::{maple_enum_code, packet_opcode, proto::option::MapleOption8}
 use crate::{recv_opcodes::RecvOpcodes, send_opcodes::SendOpcodes};
 
 maple_enum_code!(
-    CheckPinResult,
+    CheckPinResp,
     u8,
     Accepted = 0,
     RegisterNewPin = 1,
@@ -14,15 +14,6 @@ maple_enum_code!(
     //TODO valid?
     ResetLogin = 7
 );
-
-impl From<CheckPinResult> for CheckPinResp {
-    fn from(value: CheckPinResult) -> Self {
-        CheckPinResp(value)
-    }
-}
-
-#[derive(MooplePacket, Debug)]
-pub struct CheckPinResp( pub CheckPinResult);
 packet_opcode!(CheckPinResp, SendOpcodes::CheckPinCodeResult);
 
 #[derive(MooplePacket, Debug)]

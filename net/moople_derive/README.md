@@ -36,10 +36,13 @@ pub struct PacketComplex<'a, T> {
 ## Features
 
 Supports:
+
 * Lifetimes
 * Generics
 * All types which implement the *EncodePacket* + *DecodePacket* trait
-* Conditional types `CondOption<T>` + `CondEither<L, R>`, with pkt(if(..)), pkt(either(..)) attributes
+* Conditional types `CondOption<T>` + `CondEither<L, R>`, with pkt(if(..)), pkt(either(..)) attribute
+* size attribute pkt(size = "len field") for types which implement DecodePacketSized
 
 ## ToDo
+
 * Split the derive into Encode and Decode

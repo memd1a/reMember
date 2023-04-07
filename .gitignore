@@ -18,3 +18,8 @@ keys/**
 data/test_files/**
 data/re-wz-ui/**
 game_data/**
+client/moople_ffi
+util/packet_tracer
+
+*.svg
+*.png

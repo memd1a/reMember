@@ -2,9 +2,9 @@ use std::marker::PhantomData;
 
 use crate::{MaplePacketReader, MaplePacketWriter, NetResult};
 
-use super::{wrapped::PacketWrapped, DecodePacket, DecodePacketOwned, EncodePacket, PacketLen};
+use super::{wrapped::PacketWrapped, DecodePacket, DecodePacketOwned, EncodePacket};
 
-pub trait MapleOptionIndex: EncodePacket + DecodePacketOwned + PacketLen {
+pub trait MapleOptionIndex: EncodePacket + DecodePacketOwned {
     const NONE_VALUE: Self;
     const SOME_VALUE: Self;
     fn has_value(&self) -> bool;
@@ -26,7 +26,7 @@ impl MapleOptionIndex for bool {
     }
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct RevMapleOptionIndex<Opt>(pub Opt);
 
 impl<Opt> PacketWrapped for RevMapleOptionIndex<Opt>
@@ -56,7 +56,7 @@ where
     }
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub struct MapleOption<T, Opt> {
     pub opt: Option<T>,
     _t: PhantomData<Opt>,
@@ -97,6 +97,15 @@ where
             None => Opt::NONE_VALUE.encode_packet(pw),
         }
     }
+
+    const SIZE_HINT: Option<usize> = None;
+
+    fn packet_len(&self) -> usize {
+        match self.opt.as_ref() {
+            Some(v) => Opt::SOME_VALUE.packet_len() + v.packet_len(),
+            None => Opt::NONE_VALUE.packet_len(),
+        }
+    }
 }
 
 impl<'de, T, Opt> DecodePacket<'de> for MapleOption<T, Opt>
@@ -116,22 +125,35 @@ where
     }
 }
 
-impl<T, Opt> PacketLen for MapleOption<T, Opt>
-where
-    T: PacketLen,
-    Opt: MapleOptionIndex,
-{
-    const SIZE_HINT: Option<usize> = None;
-
-    fn packet_len(&self) -> usize {
-        match self.opt.as_ref() {
-            Some(v) => Opt::SOME_VALUE.packet_len() + v.packet_len(),
-            None => Opt::NONE_VALUE.packet_len(),
-        }
-    }
-}
-
 pub type MapleOption8<T> = MapleOption<T, u8>;
 pub type MapleOptionR8<T> = MapleOption<T, RevMapleOptionIndex<u8>>;
 pub type MapleOptionBool<T> = MapleOption<T, bool>;
 pub type MapleOptionRBool<T> = MapleOption<T, RevMapleOptionIndex<bool>>;
+
+
+#[cfg(test)]
+mod tests {
+    use crate::proto::tests::enc_dec_test_all;
+
+    use super::*;
+
+    #[test]
+    fn option() {
+        enc_dec_test_all([
+            MapleOption8::from_opt(Some("abc".to_string())),
+            MapleOption8::from_opt(None),
+        ]);
+        enc_dec_test_all([
+            MapleOptionR8::from_opt(Some("abc".to_string())),
+            MapleOptionR8::from_opt(None),
+        ]);
+        enc_dec_test_all([
+            MapleOptionBool::from_opt(Some("abc".to_string())),
+            MapleOptionBool::from_opt(None),
+        ]);
+        enc_dec_test_all([
+            MapleOptionRBool::from_opt(Some("abc".to_string())),
+            MapleOptionRBool::from_opt(None),
+        ]);
+    }
+}

@@ -12,7 +12,7 @@ strip = true
 
 [features]
 overlay = ["imgui", "hudhook"]
-default = []
+default = ["overlay"]
 
 [dependencies]
 anyhow = "1.0.68"
@@ -45,6 +45,7 @@ features = [
   "Win32_UI_WindowsAndMessaging",
   "Win32_Security",
   "Win32_System_SystemInformation",
-  "Win32_UI_Shell"
+  "Win32_UI_Shell",
+  "Win32_Graphics_Direct3D9"
 ]
 
