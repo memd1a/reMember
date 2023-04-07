@@ -1,6 +1,7 @@
 pub mod repl;
 pub mod state;
 
+use std::ops::Neg;
 use std::sync::Arc;
 
 use std::{net::IpAddr, time::Duration};
@@ -17,8 +18,8 @@ use data::services::SharedServices;
 use moople_net::service::handler::BroadcastSender;
 use moople_net::service::packet_buffer::PacketBuffer;
 use moople_net::service::resp::PacketOpcodeExt;
-use moople_net::SessionTransport;
 use moople_net::service::session_svc::SharedSessionHandle;
+use moople_net::SessionTransport;
 use moople_net::{
     maple_router_handler,
     service::{
@@ -32,8 +33,9 @@ use moople_net::{
 
 use moople_packet::EncodePacket;
 
-use moople_packet::proto::list::{MapleIndexListZ, MapleIndexList8};
+use moople_packet::proto::list::{MapleIndexList8, MapleIndexListZ};
 use moople_packet::proto::time::MapleExpiration;
+use moople_packet::proto::CondOption;
 use moople_packet::{
     proto::{
         list::{MapleIndexListZ16, MapleIndexListZ8},
@@ -47,14 +49,14 @@ use data::services::helper::pool::Drop;
 
 use proto95::game::mob::{MobMoveCtrlAckResp, MobMoveReq};
 use proto95::game::user::{
-    ChangeSkillRecordResp, UpdatedSkillRecord, UserDropMoneyReq, UserDropPickUpReq,
-    UserMeleeAttackReq, UserSkillUpReq,
+    ChangeSkillRecordResp, UpdatedSkillRecord, UserDropMoneyReq, UserDropPickUpReq, UserHitReq,
+    UserMeleeAttackReq, UserSkillUpReq, UserStatChangeReq,
 };
 
 use proto95::id::{FaceId, HairId, ItemId, Skin};
-use proto95::shared::char::{SkillInfo, TeleportRockInfo, AvatarData, AvatarEquips, PetIds};
+use proto95::shared::char::{AvatarData, AvatarEquips, PetIds, SkillInfo, TeleportRockInfo};
 use proto95::shared::movement::Movement;
-use proto95::shared::{FootholdId, Vec2};
+use proto95::shared::{FootholdId, PongReq, Vec2};
 use proto95::{
     game::{
         chat::{ChatMsgReq, UserChatMsgResp},
@@ -146,7 +148,7 @@ pub struct GameHandler {
     field: FieldJoinHandle,
     repl: GameRepl,
     packet_buf: PacketBuffer,
-    avatar_data: AvatarData
+    avatar_data: AvatarData,
 }
 
 impl GameHandler {
@@ -183,21 +185,21 @@ impl GameHandler {
         log::info!(
             "Session for acc: {} - char: {}",
             session.acc.username,
-            session.char.name
+            session.char.model.name
         );
 
-        let avatar_data = map_char_to_avatar(&session.char);
+        let avatar_data = map_char_to_avatar(&session.char.model);
 
         let mut packet_buf = PacketBuffer::new();
 
         let join_field = services
             .field
             .join_field(
-                session.char.id,
+                session.char.model.id,
                 avatar_data.clone(),
                 sess_handle.clone(),
                 &mut packet_buf,
-                MapId(session.char.map_id as u32),
+                MapId(session.char.model.map_id as u32),
             )
             .await?;
 
@@ -214,7 +216,7 @@ impl GameHandler {
             field: join_field,
             packet_buf,
             repl: GameRepl::new(),
-            avatar_data
+            avatar_data,
         })
     }
 }
@@ -245,7 +247,10 @@ impl MapleSessionHandler for GameHandler {
             UserDropMoneyReq => GameHandler::handle_drop_money,
             MobMoveReq => GameHandler::handle_mob_move,
             UserMeleeAttackReq => GameHandler::handle_melee_attack,
-            UserSkillUpReq => GameHandler::handle_skill_up
+            UserSkillUpReq => GameHandler::handle_skill_up,
+            PongReq => GameHandler::handle_pong,
+            UserHitReq => GameHandler::handle_user_hit,
+            UserStatChangeReq => GameHandler::handle_stat_change,
         );
 
         handler(self, session, packet.into_reader()).await?;
@@ -284,6 +289,61 @@ impl MapleServerSessionHandler for GameHandler {
 }
 
 impl GameHandler {
+    async fn handle_user_hit(&mut self, req: UserHitReq) -> GameResult<CharStatChangedResp> {
+        self.session.char.update_hp((req.dmg_internal as i32).neg());
+
+        let stats = CharStatPartial {
+            hp: CondOption(Some(self.session.char.model.hp.try_into().unwrap())),
+            ..Default::default()
+        };
+
+        _ = self
+            .services
+            .data
+            .char
+            .save_char(self.session.char.model.clone().into());
+
+        Ok(CharStatChangedResp {
+            excl: false,
+            stats: stats.into(),
+            secondary_stat: false,
+            battle_recovery: false,
+        }
+        .into())
+    }
+
+    async fn handle_pong(&mut self, _req: PongReq) -> anyhow::Result<()> {
+        Ok(())
+    }
+
+    async fn handle_stat_change(
+        &mut self,
+        req: UserStatChangeReq,
+    ) -> GameResult<CharStatChangedResp> {
+        self.session.char.update_hp(req.hp as i32);
+        self.session.char.update_mp(req.mp as i32);
+
+        let stats = CharStatPartial {
+            hp: CondOption(Some(self.session.char.model.hp.try_into().unwrap())),
+            mp: CondOption(Some(self.session.char.model.mp.try_into().unwrap())),
+            ..Default::default()
+        };
+
+        _ = self
+            .services
+            .data
+            .char
+            .save_char(self.session.char.model.clone().into());
+
+        Ok(CharStatChangedResp {
+            excl: false,
+            stats: stats.into(),
+            secondary_stat: false,
+            battle_recovery: false,
+        }
+        .into())
+    }
+
     async fn handle_skill_up(&mut self, req: UserSkillUpReq) -> GameResult<ChangeSkillRecordResp> {
         Ok(ChangeSkillRecordResp {
             reset_excl: true,
@@ -339,7 +399,7 @@ impl GameHandler {
         sess.send_packet(ClaimSvrStatusChangedResp { connected: true })
             .await?;
         sess.send_packet(CtxSetGenderResp {
-            gender: (&self.session.char.gender).into(),
+            gender: (&self.session.char.model.gender).into(),
         })
         .await?;
 
@@ -373,11 +433,11 @@ impl GameHandler {
 
         // TODO cash slots
         let invsize = [
-            char.equip_slots as u8,
-            char.use_slots as u8,
-            char.setup_slots as u8,
-            char.etc_slots as u8,
-            char.equip_slots as u8,
+            char.model.equip_slots as u8,
+            char.model.use_slots as u8,
+            char.model.setup_slots as u8,
+            char.model.etc_slots as u8,
+            char.model.equip_slots as u8,
         ];
 
         let char_equipped = CharDataEquipped {
@@ -397,13 +457,15 @@ impl GameHandler {
             })
             .collect();
 
+        let char_stat: &character::Model = &char.model.clone().into();
+
         let char_data = CharDataAll {
             stat: CharDataStat {
-                stat: char.into(),
+                stat: char_stat.into(),
                 friend_max: 30,
                 linked_character: None.into(),
             },
-            money: char.mesos as u32,
+            money: char.model.mesos as u32,
             invsize,
             equipextslotexpiration: MapleExpiration::never(),
             equipped: char_equipped,
@@ -470,7 +532,7 @@ impl GameHandler {
                 .attack_mob(
                     target.mob_id,
                     dmg,
-                    self.session.char.id as i32,
+                    self.session.char.model.id as i32,
                     &mut self.packet_buf,
                 )
                 .await?;
@@ -487,7 +549,7 @@ impl GameHandler {
         self.field
             .remove_drop(
                 req.drop_id,
-                DropLeaveParam::UserPickup(self.session.char.id as u32),
+                DropLeaveParam::UserPickup(self.session.char.model.id as u32),
             )
             .await?;
         Ok(self.enable_char().into())
@@ -499,7 +561,7 @@ impl GameHandler {
     ) -> GameResult<CharStatChangedResp> {
         self.field
             .add_drop(Drop {
-                owner: proto95::game::drop::DropOwner::User(self.session.char.id as u32),
+                owner: proto95::game::drop::DropOwner::User(self.session.char.model.id as u32),
                 pos: self.pos,
                 start_pos: self.pos,
                 value: DropTypeValue::Mesos(req.money),
@@ -517,7 +579,7 @@ impl GameHandler {
                 return Ok(())
             };
             let resp = UserChatMsgResp {
-                char: self.session.char.id as u32,
+                char: self.session.char.model.id as u32,
                 is_admin: admin,
                 msg,
                 only_balloon: false,
@@ -528,13 +590,12 @@ impl GameHandler {
 
             self.sess_handle.tx.try_send(&pw.into_packet().data)?;
         } else {
-            self.field
-                .add_chat(UserChatMsgResp {
-                    char: self.session.char.id as u32,
-                    is_admin: admin,
-                    msg: req.msg,
-                    only_balloon: req.only_balloon,
-                })?;
+            self.field.add_chat(UserChatMsgResp {
+                char: self.session.char.model.id as u32,
+                is_admin: admin,
+                msg: req.msg,
+                only_balloon: req.only_balloon,
+            })?;
         };
         Ok(())
     }
@@ -543,7 +604,9 @@ impl GameHandler {
         let ctrl_sn = req.ctrl_sn;
         let id = req.id;
 
-        self.field.update_mob_pos(req, self.session.char.id).await?;
+        self.field
+            .update_mob_pos(req, self.session.char.model.id)
+            .await?;
 
         Ok(MobMoveCtrlAckResp {
             id,
@@ -567,62 +630,97 @@ impl GameHandler {
         &mut self,
         req: UserTransferFieldReq,
     ) -> GameResult<SetFieldResp> {
-        let portal = self
-            .field
-            .get_meta()
-            .portal
-            .values()
-            .find(|p| p.pn == req.portal)
-            .ok_or_else(|| anyhow::format_err!("Invalid portal"))?;
+        if self.session.char.model.hp.le(&0) {
+            let return_map =
+                MapId(self.field.get_meta().info.return_map.unwrap_or_default() as u32);
 
-        // TODO(!) tm should be an option as mapid 999999 is invalid
-        let map_id = MapId(portal.tm as u32);
-        self.session.char.map_id = map_id.0 as i32;
-        self.session.char.spawn_point = self
-            .services
-            .meta
-            .get_field_data(map_id)
-            .unwrap()
-            .portal
-            .iter()
-            .find(|(_, p)| p.pn == portal.tn)
-            .map(|(id, _)| *id as u8)
-            .unwrap_or(0) as i32;
+            self.session.char.model.hp = 1;
+            self.session.char.model.mp = 1;
+            self.session.char.model.map_id = return_map.0 as i32;
+            self.session.char.model.spawn_point = self
+                .services
+                .meta
+                .get_field_data(return_map)
+                .unwrap()
+                .portal
+                .first_key_value()
+                .map(|(k, _)| *k)
+                .unwrap_or_default() as i32;
 
-        self.field = self
-            .services
-            .field
-            .join_field(
-                self.session.char.id,
-                self.avatar_data.clone(),
-                self.sess_handle.clone(),
-                &mut self.packet_buf,
-                MapId(self.session.char.map_id as u32),
-            )
-            .await?;
+            _ = self
+                .services
+                .data
+                .char
+                .save_char(self.session.char.model.clone().into());
 
-        let transfer_field = self.set_field();
-        Ok(transfer_field.into())
+            self.field = self
+                .services
+                .field
+                .join_field(
+                    self.session.char.model.id,
+                    self.avatar_data.clone(),
+                    self.sess_handle.clone(),
+                    &mut self.packet_buf,
+                    MapId(self.session.char.model.map_id as u32),
+                )
+                .await?;
+
+            Ok(self.set_field().into())
+        } else {
+            let portal = self
+                .field
+                .get_meta()
+                .portal
+                .values()
+                .find(|p| p.pn == req.portal)
+                .ok_or_else(|| anyhow::format_err!("Invalid portal"))?;
+
+            // TODO(!) tm should be an option as mapid 999999 is invalid
+            let map_id = MapId(portal.tm as u32);
+            self.session.char.model.map_id = map_id.0 as i32;
+            self.session.char.model.spawn_point = self
+                .services
+                .meta
+                .get_field_data(map_id)
+                .unwrap()
+                .portal
+                .iter()
+                .find(|(_, p)| p.pn == portal.tn)
+                .map(|(id, _)| *id as u8)
+                .unwrap_or(0) as i32;
+
+            self.field = self
+                .services
+                .field
+                .join_field(
+                    self.session.char.model.id,
+                    self.avatar_data.clone(),
+                    self.sess_handle.clone(),
+                    &mut self.packet_buf,
+                    MapId(self.session.char.model.map_id as u32),
+                )
+                .await?;
+
+            let transfer_field = self.set_field();
+            Ok(transfer_field.into())
+        }
     }
 
     async fn handle_movement(&mut self, req: UserMoveReq) -> anyhow::Result<()> {
         self.pos = req.move_path.pos;
-        let last_fh = req
-            .move_path
-            .moves
-            .iter()
-            .rev()
-            .find_map(|mv| match mv {
-                Movement::Normal(d) => Some(d.foothold),
-                _ => None,
-            });
+        let last_fh = req.move_path.moves.iter().rev().find_map(|mv| match mv {
+            Movement::Normal(d) => Some(d.foothold),
+            _ => None,
+        });
 
         if let Some(fh) = last_fh {
             self.fh = fh;
         }
         log::info!("User move req @ {:?}", req.move_path.pos);
 
-        self.field.update_user_pos(req, self.session.char.id).await?;
+        self.field
+            .update_user_pos(req, self.session.char.model.id)
+            .await?;
         Ok(())
     }
 

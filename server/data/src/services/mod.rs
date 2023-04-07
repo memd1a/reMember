@@ -1,3 +1,4 @@
+pub mod character;
 pub mod data;
 pub mod field;
 pub mod helper;
@@ -108,7 +109,6 @@ impl Services {
             )
             .await?;
 
-            
         let job = JobGroup::Legend;
         let char_id = self
             .data
