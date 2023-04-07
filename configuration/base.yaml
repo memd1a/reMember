@@ -1,0 +1,6 @@
+version: v0.1a
+server_name: reMember
+bind_ip: 0.0.0.0
+base_port: 8484
+shrooming_port: 8490
+client_version: 95
